@@ -147,7 +147,7 @@ document.addEventListener('scroll',()=>{
 <header>
 <h1>Day 2 — モジュール・状態・CI/CD・AVM</h1>
 <p>Azure Infrastructure as Code with Azure Verified Modules</p>
-<div class="meta">2026年7月29日(水) 9:30–12:00 JST（150 分）　｜　講師: Harshad Khole (コレ ハルシャド) — Microsoft CSA</div>
+<div class="meta">2026年7月29日(水) 9:30–12:00 JST（150 分）　｜　講師: Harshad Khole（ハルシャド・コーレ） — Microsoft CSA</div>
 </header>
 <div class="container">
 <nav class="toc"><h2>目次</h2><ol>
@@ -226,7 +226,7 @@ document.addEventListener('scroll',()=>{
 }
 
 <span class="cmt"># 参照は module.storage["app"].id のようにキーでアクセス</span></pre>
-<div class="callout warn"><strong>⚠️ <code>count</code> ではなく <code>for_each</code> を使う理由:</strong> <code>count</code> はインデックス管理のため、<strong>リストの途中の要素を削除すると以降のリソースが全て再作成されます</strong>（<code>[0],[1],[2]</code> から <code>[1]</code> を消すと <code>[2]</code>→<code>[1]</code> にズレる）。<code>for_each</code> は文字列キー管理なので影響しません。本番環境では致命的な差が出ます。</div>
+<div class="callout warn"><strong>⚠️ <code>count</code> ではなく <code>for_each</code> を使う理由:</strong> <code>count</code> はリソースを<strong>インデックスで管理する</strong>ため、<strong>リストの途中の要素を削除すると以降のリソースが全て再作成されます</strong>（<code>[0],[1],[2]</code> から <code>[1]</code> を消すと <code>[2]</code>→<code>[1]</code> にズレる）。<code>for_each</code> は文字列キー管理なので影響しません。本番環境では致命的な差が出ます。</div>
 
 <h3>ラッパーモジュールパターン（SI 事業で最も重要）</h3>
 <p>AVM をそのまま使うのではなく、<strong>自社標準を乗せた薄いラッパー</strong>を一層挿すと、案件横断の標準化が一気に進みます。</p>
@@ -255,10 +255,10 @@ document.addEventListener('scroll',()=>{
 <pre><span class="cmt"># Git タグでバージョンを固定（ブランチ参照は本番 NG）</span>
 <span class="kw">module</span> <span class="str">"vnet"</span> {
   <span class="cmt"># ✗ 悪い例: main が動くと意図せず変更が入る</span>
-  <span class="cmt"># source = "git::https://dev.azure.com/sts/iac/_git/modules//vnet"</span>
+  <span class="cmt"># source = "git::https://dev.azure.com/contoso/iac/_git/modules//vnet"</span>
 
   <span class="cmt"># ✓ 良い例: タグで固定</span>
-  <span class="kw">source</span> = <span class="str">"git::https://dev.azure.com/sts/iac/_git/modules//vnet?ref=v1.2.0"</span>
+  <span class="kw">source</span> = <span class="str">"git::https://dev.azure.com/contoso/iac/_git/modules//vnet?ref=v1.2.0"</span>
 }</pre>
 </section>
 
@@ -356,7 +356,7 @@ terraform init -migrate-state   <span class="cmt"># ローカル → リモー�
 </section>
 
 <section id="cicd"><h2>6. GitHub Actions × Terraform Deep Dive ★</h2>
-<div class="callout"><strong>本日の主題です（33 分）。</strong> AVM が「何をデプロイするか」を標準化するのに対し、GitHub Actions は「それをどう安全に・繰り返し届けるか」を standardize します。両方揃って初めて本番運用に耐えます。</div>
+<div class="callout"><strong>本日の主題です（28 分）。</strong> AVM が「何をデプロイするか」を標準化するのに対し、GitHub Actions は「それをどう安全に・繰り返し届けるか」を標準化します。両方揃って初めて本番運用に耐えます。</div>
 
 <h3>6.1 GitOps の考え方 — Pull Request を「変更申請書」にする</h3>
 <table><tr><th>従来の運用</th><th>GitOps + GitHub Actions</th></tr>
@@ -412,7 +412,7 @@ repo:contoso-org/avm-workshop:environment:plan
 
 <span class="cmt"># ID 形式（実際に発行されることがある）</span>
 repo:contoso-org@<span class="kw">59213077</span>/avm-workshop@<span class="kw">1315150240</span>:environment:plan</pre>
-<div class="callout warn"><strong>⚠️ これは実際に本ワークショップの準備中に発生しました。</strong> 厤値なのは、設定を確認すると <code>use_immutable_subject</code> は <code>false</code> なのに、<strong>接頭辞だけは ID 形式だった</strong>ことです。つまり「フラグが false だから古典形式のはず」という推測は通用しません。</div>
+<div class="callout warn"><strong>⚠️ これは実際に本ワークショップの準備中に発生しました。</strong> 厥介なのは、設定を確認すると <code>use_immutable_subject</code> は <code>false</code> なのに、<strong>接頭辞だけは ID 形式だった</strong>ことです。つまり「フラグが false だから古典形式のはず」という推測は通用しません。</div>
 <p><strong>対処法 — 推測せず、GitHub に聞く。</strong></p>
 <pre><span class="cmt"># 実際に使われる接頭辞を API で取得する</span>
 gh api repos/OWNER/REPO/actions/oidc/customization/sub --jq .sub_claim_prefix</pre>
@@ -459,7 +459,7 @@ merge to main
 <div class="callout"><strong>なぜ artifact で <code>tfplan</code> を渡すのか:</strong> apply 時に再度 <code>plan</code> を実行すると、その間に他の変更が入っていた場合<strong>レビューした内容と違うものが適用されます</strong>。レビュー済みの plan ファイルをそのまま適用することで、「承認した内容 = 適用された内容」を保証できます。</div>
 
 <h4>★ <code>concurrency</code> — state ロック競合を防ぐ</h4>
-<p>2 つの PR がほぼ同時に merge されると、2 つの apply が同じ state を奪い合い、片方が <code>Error acquiring the state lock</code> で失敗します。<strong>ワークフロー側で直列化</strong>するのが正解です。</p>
+<p>2 つの PR がほぼ同時にマージされると、2 つの apply が同じ state を奪い合い、片方が <code>Error acquiring the state lock</code> で失敗します。<strong>ワークフロー側で直列化</strong>するのが正解です。</p>
 <pre><span class="kw">concurrency</span>:
   <span class="cmt"># state ファイル単位でグループ化（環境ごとに直列実行）</span>
   group: terraform-${{ github.ref }}
@@ -598,7 +598,7 @@ deny[msg] {
   msg := sprintf(<span class="str">"%s にタグ %v がありません"</span>, [r.address, missing])
 }</pre>
 <div class="callout tip"><strong>💡 Azure Policy との使い分け:</strong> <code>conftest</code> は <strong>apply 前（シフトレフト）</strong>に PR 上で止められるのが利点です。Azure Policy は <strong>どんな経路で作られたリソースにも効く</strong>（ポータル手動作成含む）のが利点です。<strong>両方使うのが正解</strong>で、どちらか一方では守り切れません。</div>
-<p>コスト差分の可視化には <strong>Infracost</strong> を組み込み、PR コメントに月額の増減を表示できます。「この PR で月 +¥45,000」が見えると、レビューの質が変わります。</p>
+<p>コスト差分の可視化には <strong>Infracost</strong> を組み込むと、PR コメントに月額の増減を表示できます。「この PR で月 +¥45,000」が見えると、レビューの質が変わります。</p>
 
 <h3>6.8 実運用で必要になる追加要素</h3>
 <table><tr><th>要件</th><th>対応方法</th></tr>
@@ -778,10 +778,10 @@ deny[msg] {
 <tr><td>4</td><td><strong>トレーサビリティ</strong>（どのコードから生成されたか）</td><td>「この Excel はいつ時点のものか」が誰にも答えられない</td></tr>
 <tr><td>5</td><td><strong>改ざん検知</strong>（手編集を検出できる）</td><td>納品後に誰かが Excel を直接編集し、実環境と食い違う</td></tr>
 <tr><td>6</td><td><strong>非エンジニア可読性</strong></td><td>エンドユーザー様の情シス／監査部門が読めない</td></tr></table>
-<div class="callout"><strong>ポイント:</strong> Excel は <strong>6（可読性）に非常に強く、2（差分）に非常に弱い</strong>形式です。一方 YAML/Markdown は 2 に強く 6 に弱い。<strong>どちらか一方を選ぶ必要はありません</strong> — 正をコードに置き、そこから複数形式を生成すれば、両方の長所を取れます。</div>
+<div class="callout"><strong>ポイント:</strong> Excel は <strong>6（可読性）に非常に強く、2（差分）に非常に弱い</strong>形式です。一方 YAML / Markdown は 2 に強く 6 に弱い形式です。<strong>どちらか一方を選ぶ必要はありません</strong> — 正をコードに置き、そこから複数形式を生成すれば、両方の長所を取れます。</div>
 
 <h3 id="params-compare">10.3 選択肢の比較</h3>
-<p>評価軸（10.2）× 各方式のマトリクスです。◎=強い / ○=可 / △=条件付き / ×=不可</p>
+<p>評価軸（10.2）× 各方式のマトリクスです。◎=強い / ○=可 / △=条件付き / ×=不可 / —=該当なし</p>
 <table>
 <tr><th>方式</th><th>①機械<br>検証</th><th>②差分<br>レビュー</th><th>③自動<br>生成</th><th>④トレー<br>サビリティ</th><th>⑤改ざん<br>検知</th><th>⑥非エンジニア<br>可読性</th><th>位置づけ</th></tr>
 <tr><td>Excel（手作業でメンテ）</td><td>×</td><td>×</td><td>×</td><td>×</td><td>×</td><td>◎</td><td>避けたい形</td></tr>
@@ -934,7 +934,7 @@ sha256sum dist/*.json dist/*.xlsx &gt; dist/SHA256SUMS.txt</pre>
 <tr><td><strong>PDF</strong></td><td>Markdown → <code>pandoc</code></td><td>契約・法務</td><td>改変不可／署名・押印に載せやすい</td></tr>
 <tr><td><strong>静的サイト</strong></td><td>MkDocs / GitHub Pages</td><td>運用フェーズの全員</td><td>常に最新／検索できる</td></tr>
 <tr><td><strong>JSON</strong></td><td><code>terraform show -json</code></td><td>機械（監視・CMDB 連携）</td><td>他システムに取り込める</td></tr></table>
-<div class="callout tip"><strong>💡 最小の一歩:</strong> <code>terraform-docs</code> の導入は<strong>設定ファイル 1 個 + CI 1 ステップ</strong>で完了します。<code>variable</code> の <code>description</code> がそのまま仕様書になるため、「description を書く」という規律にも繋がります（10.4 の <code>tflint</code> ルール <code>terraform_documented_variables</code> と組み合わせると強制できます）。まずここから着手されることをお勧めします。</div>
+<div class="callout tip"><strong>💡 最小の一歩:</strong> <code>terraform-docs</code> の導入は<strong>設定ファイル 1 個 + CI 1 ステップ</strong>で完了します。<code>variable</code> の <code>description</code> がそのまま仕様書になるため、「description を書く」という規律にも繋がります（TFLint の <code>terraform_documented_variables</code> ルールを有効にすれば CI で強制できます）。まずここから着手されることをお勧めします。</div>
 
 <h3>10.7 さらに踏み込む場合 — セルフサービス化</h3>
 <h4>Azure Deployment Environments (ADE)</h4>
@@ -985,7 +985,7 @@ parameters:
 <div class="callout tip"><strong>💡 自社開発標準との接続:</strong> 中央のラッパーモジュール層こそが「自社開発標準」そのものです。自社の開発基盤にコーディング規約やレビュー基準を組み込んでいるのと同じ思想を、Azure インフラ側に適用する形になります。案件が増えるほどラッパー層の投資対効果が高まり、ISMS / P マークの観点でも「Git 履歴 = 変更証跡」「PR 承認 = 変更管理記録」「CI の checkov 結果 = セキュリティ検証記録」として、監査対応の工数削減にも直結します。</div>
 </section>
 
-<section id="demo07"><h2>11. Demo 07: YAML パラメータ &amp; Excel 自動生成</h2>
+<section id="demo07"><h2>11. Demo 07: YAML パラメータ &amp; Excel 自動生成 ★（8 分）</h2>
 <p><code>day2/07-parameters/</code> — Session 1 のご質問「納品時にパラメータ Excel を同梱している。他に信頼できる方法はあるか」への実装例です。<strong>Excel 出力はそのままに、「刻印」と「手編集検知」を追加しています（10.5 の実物）。</strong></p>
 
 <h3>11.1 ファイル構成</h3>
@@ -1006,10 +1006,10 @@ parameters:
 <table><tr><th>#</th><th>操作</th><th>見せどころ</th><th>分</th></tr>
 <tr><td>①</td><td>VS Code で <code>contoso-prod.yaml</code> を開く</td><td><code>location:</code> と打つと<strong>プルダウンで候補が出る</strong>。<code>costCenter</code> に不正値を入れると<strong>即座に赤波線</strong>。Excel の入力規則と同じ体験が Git 管理下で実現できている</td><td>1</td></tr>
 <tr><td>②</td><td><code>check-jsonschema</code> を実行</td><td>CI で機械的に弾ける。人のレビューに頼らない</td><td>1</td></tr>
-<tr><td>③</td><td><code>enablePrivateEndpoint</code> を <code>false</code> にして <code>plan</code></td><td><code>check</code> ブロックが<strong>日本語のエラーメッセージ</strong>で停止。業務ルールをコードで守る</td><td>1</td></tr>
+<tr><td>③</td><td><code>enablePrivateEndpoint</code> を <code>false</code> にして <code>plan</code></td><td><code>precondition</code> が<strong>日本語のエラーメッセージ</strong>で <code>plan</code> を停止。業務ルールをコードで守る<br><span style="font-size:.9em">※ <code>check</code> ブロックは<strong>警告止まりで plan は成功します</strong>。絶対に通してはいけないルールは <code>precondition</code> で守ります</span></td><td>1</td></tr>
 <tr><td>④</td><td><code>git diff</code> で dev と prod を比較</td><td><strong>Excel には絶対にできないこと。</strong>環境差分が行単位で見える</td><td>1</td></tr>
 <tr><td>⑤</td><td><code>gen_param_sheet.py</code> を実行して xlsx を開く</td><td>説明文・制約が Schema から自動で入り、リソース一覧が <code>plan</code> から自動で入る</td><td>2</td></tr>
-<tr><td>⑥ ★</td><td><strong>「メタ情報」シートを見せ、その後正規化 JSON を<u>わざと手編集</u>して CI を回す</strong></td><td><strong>最大の見せ場。</strong>メタ情報シートに Git コミット・モジュールバージョン・SHA-256 が刻印されている。そして手編集すると <strong>CI が赤になる</strong> — 「納品物が改ざんされていないこと」が<strong>機械的に証明できる</strong></td><td>2</td></tr></table>
+<tr><td>⑥ ★</td><td><strong>「メタ情報」シートを見せ、その後、正規化 JSON を<u>わざと手編集</u>して CI を回す</strong></td><td><strong>最大の見せ場。</strong>メタ情報シートに Git コミット・モジュールバージョン・SHA-256 が刻印されている。そして手編集すると <strong>CI が赤になる</strong> — 「納品物が改ざんされていないこと」が<strong>機械的に証明できる</strong></td><td>2</td></tr></table>
 <div class="callout tip"><strong>💡 ⑥ の語り口:</strong> 「今までは『この Excel は正しいです』と<u>口頭で保証</u>するしかありませんでした。これからは『このコミットから再生成して一致しました』と<u>CI が証明</u>します」</div>
 
 <h3>11.3 コードの核心 — たった 2 行</h3>

@@ -78,22 +78,17 @@ locals {
 
 # -----------------------------------------------------------------------------
 # パラメータの整合性チェック（Excel には無い安全網）
-# plan の時点で失敗するため、本番適用前に必ず止まります
+#
+# ★ check と precondition の使い分け ★
+#   check        … 失敗しても「警告」止まり。plan / apply は成功する（終了コード 0）。
+#                  「気づけるとよい」助言レベルの検証に使う。
+#   precondition … 失敗すると plan がその場でエラー終了する。
+#                  「絶対に通してはいけない」業務ルールはこちらで守る。
 # -----------------------------------------------------------------------------
-check "parameter_sanity" {
-  assert {
-    condition     = can(cidrhost(local.p.network.addressSpace[0], 0))
-    error_message = "network.addressSpace[0] が有効な CIDR ではありません: ${local.p.network.addressSpace[0]}"
-  }
-
+check "parameter_advisory" {
   assert {
     condition     = length(local.p.network.subnets) > 0
-    error_message = "network.subnets が空です。最低 1 つのサブネットを定義してください。"
-  }
-
-  assert {
-    condition     = var.env != "prod" || local.p.enablePrivateEndpoint
-    error_message = "本番環境では enablePrivateEndpoint を true にしてください。"
+    error_message = "network.subnets が空です。最低 1 つのサブネットを定義することを推奨します。"
   }
 }
 
@@ -101,6 +96,19 @@ resource "azurerm_resource_group" "this" {
   name     = "rg-${var.customer}-${var.env}"
   location = local.p.location
   tags     = local.common_tags
+
+  # ★ ここは警告ではなく plan を「停止」させる ★
+  lifecycle {
+    precondition {
+      condition     = can(cidrhost(local.p.network.addressSpace[0], 0))
+      error_message = "network.addressSpace[0] が有効な CIDR ではありません: ${local.p.network.addressSpace[0]}"
+    }
+
+    precondition {
+      condition     = var.env != "prod" || local.p.enablePrivateEndpoint
+      error_message = "本番環境では enablePrivateEndpoint を true にしてください。"
+    }
+  }
 }
 
 # =============================================================================

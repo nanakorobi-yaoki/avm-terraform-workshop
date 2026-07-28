@@ -12,6 +12,8 @@
            - pull_request 用
            - environment:production 用   ← 承認ゲート付きジョブに必須
            - environment:plan 用
+         ※ subject の接頭辞は GitHub API から実値を取得し、古典形式と
+           ID 形式の両方を登録します（合計最大 8 件）
       5. gh CLI があれば GitHub Secrets を自動登録
 
     前提: az CLI ログイン済み (az login)、アプリ登録権限があること
@@ -108,9 +110,13 @@ Write-Host "▶ [4/5] Federated Credential..." -ForegroundColor Yellow
 function Add-FederatedCredential {
     param([string]$Name, [string]$Subject, [string]$Description)
 
-    $found = az ad app federated-credential list --id $appId --query "[?name=='$Name']" -o tsv
-    if (-not [string]::IsNullOrWhiteSpace($found)) {
-        Write-Host "   スキップ (既存): $Name"
+    # ★ 重複判定は「名前」ではなく「subject」で行う
+    #   Entra ID は issuer + subject の組み合わせに一意性制約を課します。
+    #   名前で判定すると、別名で同じ subject を登録しようとして
+    #   "must be unique for the application" エラーになります。
+    $existing = az ad app federated-credential list --id $appId --query "[?subject=='$Subject'].name" -o tsv
+    if (-not [string]::IsNullOrWhiteSpace($existing)) {
+        Write-Host "   スキップ (subject 登録済み: $($existing.Trim()))"
         return
     }
 
@@ -126,16 +132,65 @@ function Add-FederatedCredential {
     $tmp = New-TemporaryFile
     Set-Content -Path $tmp -Value $params -Encoding utf8
     az ad app federated-credential create --id $appId --parameters "@$tmp" --output none
+    $ok = ($LASTEXITCODE -eq 0)
     Remove-Item $tmp -Force
 
-    Write-Host "   登録: $Name"
-    Write-Host "         subject = $Subject"
+    if ($ok) {
+        Write-Host "   登録: $Name"
+        Write-Host "         subject = $Subject"
+    } else {
+        Write-Host "   ✗ 登録失敗: $Name (subject = $Subject)" -ForegroundColor Red
+    }
 }
 
-Add-FederatedCredential -Name "github-main"     -Subject "repo:${RepoFull}:ref:refs/heads/main"    -Description "main ブランチへの push"
-Add-FederatedCredential -Name "github-pr"       -Subject "repo:${RepoFull}:pull_request"           -Description "Pull Request"
-Add-FederatedCredential -Name "github-env-prod" -Subject "repo:${RepoFull}:environment:production" -Description "environment: production (承認ゲート)"
-Add-FederatedCredential -Name "github-env-plan" -Subject "repo:${RepoFull}:environment:plan"       -Description "environment: plan"
+# -----------------------------------------------------------------------------
+# ★★★ 最重要 ★★★  subject の接頭辞は「推測しない」
+#
+# GitHub は sub クレームの接頭辞を、古典的な
+#     repo:<org>/<repo>
+# ではなく、数値 ID を含む不変 (immutable) 形式
+#     repo:<org>@<orgId>/<repo>@<repoId>
+# で発行することがあります。
+# しかも customization/sub の use_immutable_subject が false でも
+# ID 形式になるケースが実際に確認されています。
+#
+# subject は 1 文字でも違うと実行時にこうなります:
+#     AADSTS700213: No matching federated identity record found
+#
+# → GitHub API から sub_claim_prefix を取得し、実際の形式を使います。
+#   両形式を登録しておけば、GitHub 側の仕様変更にも耐えられます。
+# -----------------------------------------------------------------------------
+$ghAvailable = $null -ne (Get-Command gh -ErrorAction SilentlyContinue)
+
+$prefixes = [System.Collections.Generic.List[string]]::new()
+$prefixes.Add("repo:$RepoFull")
+
+if ($ghAvailable) {
+    $actualPrefix = (gh api "repos/$RepoFull/actions/oidc/customization/sub" --jq ".sub_claim_prefix" 2>$null)
+    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($actualPrefix)) {
+        $actualPrefix = $actualPrefix.Trim()
+        if (-not $prefixes.Contains($actualPrefix)) {
+            Write-Host "   ⚠ GitHub は ID 形式の sub を発行します" -ForegroundColor Magenta
+            Write-Host "     検出した接頭辞: $actualPrefix" -ForegroundColor Magenta
+            $prefixes.Add($actualPrefix)
+        }
+    }
+} else {
+    Write-Host "   ⚠ gh CLI が無いため接頭辞を検出できません。古典形式のみ登録します" -ForegroundColor Yellow
+}
+
+$idx = 0
+foreach ($prefix in $prefixes) {
+    # 2 つ目以降（ID 形式）は名前が衝突しないよう接尾辞を付ける
+    $sfx = if ($idx -eq 0) { "" } else { "-id" }
+
+    Add-FederatedCredential -Name "github-main$sfx"     -Subject "${prefix}:ref:refs/heads/main"    -Description "main ブランチへの push"
+    Add-FederatedCredential -Name "github-pr$sfx"       -Subject "${prefix}:pull_request"           -Description "Pull Request"
+    Add-FederatedCredential -Name "github-env-prod$sfx" -Subject "${prefix}:environment:production" -Description "environment: production (承認ゲート)"
+    Add-FederatedCredential -Name "github-env-plan$sfx" -Subject "${prefix}:environment:plan"       -Description "environment: plan"
+
+    $idx++
+}
 
 # -----------------------------------------------------------------------------
 # 5. GitHub Secrets 登録
@@ -143,7 +198,6 @@ Add-FederatedCredential -Name "github-env-plan" -Subject "repo:${RepoFull}:envir
 $tenantId = az account show --query tenantId -o tsv
 
 Write-Host "▶ [5/5] GitHub Secrets..." -ForegroundColor Yellow
-$ghAvailable = $null -ne (Get-Command gh -ErrorAction SilentlyContinue)
 
 if ($ghAvailable) {
     gh secret set AZURE_CLIENT_ID       --repo $RepoFull --body $appId
@@ -172,8 +226,15 @@ GitHub Secrets に以下を設定してください
   2. "production" に Required reviewers を設定（承認ゲート）
   3. PR を作成してワークフローの動作を確認
 
-⚠ 注意: ジョブに environment: を指定すると JWT の sub クレームが
-        environment:<名前> に変わります。本スクリプトは production と
-        plan の 2 つを登録済みです。別名の environment を使う場合は
-        追加登録が必要です。
+⚠ 注意 1: ジョブに environment: を指定すると JWT の sub クレームが
+           environment:<名前> に変わります。本スクリプトは production と
+           plan の 2 つを登録済みです。別名の environment を使う場合は
+           追加登録が必要です。
+
+⚠ 注意 2: GitHub は sub の接頭辞を ID 形式
+           (repo:<org>@<orgId>/<repo>@<repoId>) で発行することがあります。
+           本スクリプトは両形式を登録します。認証に失敗したら、
+           実際の sub を Actions のログ（Azure Login ステップ）で確認し、
+           下記で接頭辞を照合してください:
+             gh api repos/$RepoFull/actions/oidc/customization/sub --jq .sub_claim_prefix
 "@

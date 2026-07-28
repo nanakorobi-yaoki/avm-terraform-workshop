@@ -403,7 +403,21 @@ terraform init -migrate-state   <span class="cmt"># ローカル → リモー�
 <tr><td>Pull Request</td><td><code>repo:ORG/REPO:pull_request</code></td></tr>
 <tr><td><strong><code>environment: production</code> を指定したジョブ</strong></td><td><strong><code>repo:ORG/REPO:environment:production</code></strong></td></tr>
 <tr><td>タグ <code>v*</code> の push</td><td><code>repo:ORG/REPO:ref:refs/tags/v1.0.0</code></td></tr></table>
-<div class="callout warn"><strong>⚠️ 最頻出のエラー:</strong> ジョブに <code>environment:</code> を付けた瞬間、<code>sub</code> クレームは <code>ref:refs/heads/main</code> ではなく <code>environment:production</code> に<strong>変わります</strong>。ブランチ用の Federated Credential しか登録していないと <code>AADSTS70021: No matching federated identity record found</code> で失敗します。<strong>承認ゲートを付けるなら environment 用の資格情報を必ず追加してください。</strong>1 アプリにつき最大 20 件まで登録できます。</div>
+<div class="callout warn"><strong>⚠️ 最頻出のエラー:</strong> ジョブに <code>environment:</code> を付けた瞬間、<code>sub</code> クレームは <code>ref:refs/heads/main</code> ではなく <code>environment:production</code> に<strong>変わります</strong>。ブランチ用の Federated Credential しか登録していないと <code>AADSTS700213: No matching federated identity record found</code> で失敗します。<strong>承認ゲートを付けるなら environment 用の資格情報を必ず追加してください。</strong>1 アプリにつき最大 20 件まで登録できます。</div>
+
+<h4>★ 接頭辞も変わる — 「ID 形式の sub」問題</h4>
+<p>上表の <code>repo:ORG/REPO</code> という接頭辞は、実は<strong>常にその形とは限りません</strong>。GitHub は組織名・リポジトリ名の改名に耐えるよう、<strong>数値 ID を埋め込んだ不変 (immutable) 形式</strong>で <code>sub</code> を発行することがあります。</p>
+<pre><span class="cmt"># 古典形式（多くの記事やサンプルはこちら）</span>
+repo:contoso-org/avm-workshop:environment:plan
+
+<span class="cmt"># ID 形式（実際に発行されることがある）</span>
+repo:contoso-org@<span class="kw">59213077</span>/avm-workshop@<span class="kw">1315150240</span>:environment:plan</pre>
+<div class="callout warn"><strong>⚠️ これは実際に本ワークショップの準備中に発生しました。</strong> 厤値なのは、設定を確認すると <code>use_immutable_subject</code> は <code>false</code> なのに、<strong>接頭辞だけは ID 形式だった</strong>ことです。つまり「フラグが false だから古典形式のはず」という推測は通用しません。</div>
+<p><strong>対処法 — 推測せず、GitHub に聞く。</strong></p>
+<pre><span class="cmt"># 実際に使われる接頭辞を API で取得する</span>
+gh api repos/OWNER/REPO/actions/oidc/customization/sub --jq .sub_claim_prefix</pre>
+<p>本ワークショップの <code>setup-oidc.ps1</code> / <code>setup-oidc.sh</code> はこの API を叩いて実値を取得し、<strong>古典形式と ID 形式の両方を登録</strong>します（合計 8 件）。こうしておけば、GitHub 側の仕様がどちらに転んでも動きます。</p>
+<div class="callout tip"><strong>💡 実務への教訓:</strong> OIDC の認証失敗は、ほぼすべて <code>subject</code> の文字列不一致です。デバッグの鉄則は<strong>「Actions のログに出ている <code>subject claim</code> をそのままコピーして登録する」</strong>こと。<code>azure/login</code> は失敗時に実際の sub をログ出力してくれます。</div>
 
 <h4>GitHub Secrets に入れる 3 つの値（いずれも機密ではない）</h4>
 <pre>AZURE_CLIENT_ID       <span class="cmt"># アプリケーション (クライアント) ID</span>
@@ -600,7 +614,7 @@ deny[msg] {
 
 <h3>6.10 よくあるハマりどころ 早見表</h3>
 <table><tr><th>症状</th><th>原因と対処</th></tr>
-<tr><td><code>AADSTS70021: No matching federated identity record</code></td><td><code>subject</code> の不一致。<code>environment:</code> 追加時は専用の資格情報が必要（6.2 参照）</td></tr>
+<tr><td><code>AADSTS700213: No matching federated identity record</code></td><td><code>subject</code> の不一致。<code>environment:</code> 追加時は専用の資格情報が必要（6.2 参照）。接頭辞が <strong>ID 形式</strong>の可能性もあるので <code>gh api repos/OWNER/REPO/actions/oidc/customization/sub</code> で実値を確認</td></tr>
 <tr><td><code>Error acquiring the state lock</code></td><td><code>concurrency</code> 未設定で同時実行。直列化する（6.3 参照）</td></tr>
 <tr><td><code>Error: Backend initialization required</code></td><td>backend 設定変更後に <code>-reconfigure</code> または <code>-migrate-state</code> が必要</td></tr>
 <tr><td>plan は成功するが apply で失敗</td><td>権限不足（RBAC 付与には <code>User Access Administrator</code> が別途必要なケース）</td></tr>
@@ -631,7 +645,7 @@ deny[msg] {
 └── README.md</pre>
 
 <h3>7.2 事前準備 — OIDC セットアップ（講師が事前実行済み）</h3>
-<p>スクリプト 1 本でアプリ登録・SP 作成・RBAC 付与・Federated Credential 4 件の登録まで完了します。</p>
+<p>スクリプト 1 本でアプリ登録・SP 作成・RBAC 付与・Federated Credential の登録まで完了します（subject の接頭辞を GitHub API から取得し、古典形式と ID 形式の両方を登録します。<strong>6.2 参照</strong>）。</p>
 <pre>cd day2/03-cicd/scripts
 
 <span class="cmt"># PowerShell (Windows)</span>
@@ -645,7 +659,7 @@ deny[msg] {
 
 <h3>7.3 実演シナリオ（ライブデモ）</h3>
 <table><tr><th>#</th><th>操作</th><th>見せるポイント</th><th>分</th></tr>
-<tr><td>1</td><td>Entra ID の Federated Credential を Portal で表示</td><td><strong>シークレットが 1 つも無い</strong>こと。subject 4 種類の違い</td><td>2</td></tr>
+<tr><td>1</td><td>Entra ID の Federated Credential を Portal で表示</td><td><strong>シークレットが 1 つも無い</strong>こと。subject の差異（ブランチ / PR / environment）と ID 形式の接頭辞</td><td>2</td></tr>
 <tr><td>2</td><td>ブランチを切り、<code>main.tf</code> のタグを 1 つ削除して PR 作成</td><td>PR = 変更申請書</td><td>2</td></tr>
 <tr><td>3</td><td>Actions タブで <code>validate</code> ジョブを見る</td><td>fmt / tflint / checkov / conftest が走る様子</td><td>3</td></tr>
 <tr style="background:#e8f7ee"><td>4</td><td><strong>conftest が必須タグ欠如で落ちる</strong></td><td><strong>Policy as Code が apply 前に止める</strong>（最大の見せ場）</td><td>3</td></tr>

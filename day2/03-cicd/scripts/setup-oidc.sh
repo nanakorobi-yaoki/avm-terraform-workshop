@@ -11,6 +11,8 @@
 #        - pull_request 用
 #        - environment:production 用   ← 承認ゲート付きジョブに必須
 #        - environment:plan 用
+#      ※ subject の接頭辞は GitHub API から実値を取得し、古典形式と
+#        ID 形式の両方を登録します（合計最大 8 件）
 #   5. gh CLI があれば GitHub Secrets を自動登録
 #
 # 前提: az CLI ログイン済み (`az login`)、アプリ登録権限があること
@@ -136,27 +138,71 @@ echo "▶ [4/5] Federated Credential..."
 add_federated_credential() {
   local name="$1" subject="$2" desc="$3"
 
-  if az ad app federated-credential list --id "$APP_ID" --query "[?name=='${name}']" -o tsv 2>/dev/null | grep -q .; then
-    echo "   スキップ (既存): ${name}"
+  # ★ 重複判定は「名前」ではなく「subject」で行う
+  #   Entra ID は issuer + subject の組み合わせに一意性制約を課すため、
+  #   名前で判定すると "must be unique for the application" エラーになります。
+  local existing
+  existing=$(az ad app federated-credential list --id "$APP_ID" --query "[?subject=='${subject}'].name" -o tsv 2>/dev/null || true)
+  if [[ -n "$existing" ]]; then
+    echo "   スキップ (subject 登録済み: ${existing})"
     return
   fi
 
-  az ad app federated-credential create --id "$APP_ID" --parameters "{
+  if az ad app federated-credential create --id "$APP_ID" --parameters "{
     \"name\": \"${name}\",
     \"issuer\": \"https://token.actions.githubusercontent.com\",
     \"subject\": \"${subject}\",
     \"description\": \"${desc}\",
     \"audiences\": [\"api://AzureADTokenExchange\"]
-  }" --output none
-
-  echo "   登録: ${name}"
-  echo "         subject = ${subject}"
+  }" --output none; then
+    echo "   登録: ${name}"
+    echo "         subject = ${subject}"
+  else
+    echo "   ✗ 登録失敗: ${name} (subject = ${subject})" >&2
+  fi
 }
 
-add_federated_credential "github-main"        "repo:${REPO_FULL}:ref:refs/heads/main"    "main ブランチへの push"
-add_federated_credential "github-pr"          "repo:${REPO_FULL}:pull_request"           "Pull Request"
-add_federated_credential "github-env-prod"    "repo:${REPO_FULL}:environment:production" "environment: production (承認ゲート)"
-add_federated_credential "github-env-plan"    "repo:${REPO_FULL}:environment:plan"       "environment: plan"
+# -----------------------------------------------------------------------------
+# ★★★ 最重要 ★★★  subject の接頭辞は「推測しない」
+#
+# GitHub は sub クレームの接頭辞を、古典的な
+#     repo:<org>/<repo>
+# ではなく、数値 ID を含む不変 (immutable) 形式
+#     repo:<org>@<orgId>/<repo>@<repoId>
+# で発行することがあります。
+# しかも customization/sub の use_immutable_subject が false でも
+# ID 形式になるケースが実際に確認されています。
+#
+# subject が 1 文字でも違うと実行時にこうなります:
+#     AADSTS700213: No matching federated identity record found
+#
+# → GitHub API から sub_claim_prefix を取得し、両形式を登録します。
+# -----------------------------------------------------------------------------
+PREFIXES=("repo:${REPO_FULL}")
+
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  ACTUAL_PREFIX=$(gh api "repos/${REPO_FULL}/actions/oidc/customization/sub" --jq '.sub_claim_prefix' 2>/dev/null || true)
+  if [[ -n "$ACTUAL_PREFIX" && "$ACTUAL_PREFIX" != "null" && "$ACTUAL_PREFIX" != "repo:${REPO_FULL}" ]]; then
+    echo "   ⚠ GitHub は ID 形式の sub を発行します"
+    echo "     検出した接頭辞: ${ACTUAL_PREFIX}"
+    PREFIXES+=("$ACTUAL_PREFIX")
+  fi
+else
+  echo "   ⚠ gh CLI が無い / 未認証のため接頭辞を検出できません。古典形式のみ登録します"
+fi
+
+IDX=0
+for PREFIX in "${PREFIXES[@]}"; do
+  # 2 つ目以降（ID 形式）は名前が衝突しないよう接尾辞を付ける
+  if [[ $IDX -eq 0 ]]; then SFX=""; else SFX="-id"; fi
+
+  add_federated_credential "github-main${SFX}"     "${PREFIX}:ref:refs/heads/main"    "main ブランチへの push"
+  add_federated_credential "github-pr${SFX}"       "${PREFIX}:pull_request"           "Pull Request"
+  add_federated_credential "github-env-prod${SFX}" "${PREFIX}:environment:production" "environment: production (承認ゲート)"
+  add_federated_credential "github-env-plan${SFX}" "${PREFIX}:environment:plan"       "environment: plan"
+
+  IDX=$((IDX + 1))
+done
 
 # -----------------------------------------------------------------------------
 # 5. GitHub Secrets 登録（gh CLI があれば自動）
@@ -191,10 +237,17 @@ GitHub Secrets に以下を設定してください
   2. "production" に Required reviewers を設定（承認ゲート）
   3. PR を作成してワークフローの動作を確認
 
-⚠ 注意: ジョブに environment: を指定すると JWT の sub クレームが
-        environment:<名前> に変わります。本スクリプトは production と
-        plan の 2 つを登録済みです。別名の environment を使う場合は
-        追加登録が必要です。
+⚠ 注意 1: ジョブに environment: を指定すると JWT の sub クレームが
+           environment:<名前> に変わります。本スクリプトは production と
+           plan の 2 つを登録済みです。別名の environment を使う場合は
+           追加登録が必要です。
+
+⚠ 注意 2: GitHub は sub の接頭辞を ID 形式
+           (repo:<org>@<orgId>/<repo>@<repoId>) で発行することがあります。
+           本スクリプトは両形式を登録します。認証に失敗したら、
+           実際の sub を Actions のログ（Azure Login ステップ）で確認し、
+           下記で接頭辞を照合してください:
+             gh api repos/${REPO_FULL}/actions/oidc/customization/sub --jq .sub_claim_prefix
 
 後片付け: ./teardown-oidc.sh --app-name "${APP_NAME}" --resource-group "${RESOURCE_GROUP}"
 ==============================================

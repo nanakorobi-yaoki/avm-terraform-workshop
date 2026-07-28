@@ -147,7 +147,7 @@ document.addEventListener('scroll',()=>{
 <header>
 <h1>Day 2 — モジュール・状態・CI/CD・AVM</h1>
 <p>Azure Infrastructure as Code with Azure Verified Modules</p>
-<div class="meta">2026年7月29日(水) 9:30–12:00 JST（150 分）　｜　講師: Harshad Khole（ハルシャド・コーレ） — Microsoft CSA</div>
+<div class="meta">2026年7月29日(水)　全 150 分　｜　講師: Harshad Khole（ハルシャド・コーレ） — Microsoft CSA</div>
 </header>
 <div class="container">
 <nav class="toc"><h2>目次</h2><ol>
@@ -169,23 +169,24 @@ document.addEventListener('scroll',()=>{
 </nav>
 
 <section id="agenda"><h2>1. セッションアジェンダ</h2>
-<p><strong>2026年7月29日(水) 9:30–12:00 JST</strong>（本編 120 分＋質疑応答 30 分。休憩 10 分を含む）</p>
-<table><tr><th>時刻</th><th>区分</th><th>内容</th><th>分</th></tr>
-<tr><td>9:30–9:35</td><td>導入</td><td>Day 1 振り返り／本日のゴール</td><td>5</td></tr>
-<tr><td>9:35–9:47</td><td>座学①</td><td>モジュール & 再利用設計</td><td>12</td></tr>
-<tr><td>9:47–9:57</td><td>座学②</td><td>状態管理 Deep Dive</td><td>10</td></tr>
-<tr><td><strong>9:57–10:25</strong></td><td><strong>座学③ ★</strong></td><td><strong>GitHub Actions × Terraform Deep Dive</strong></td><td><strong>28</strong></td></tr>
-<tr><td>10:25–10:35</td><td>休憩</td><td>—</td><td>10</td></tr>
-<tr><td>10:35–10:47</td><td>座学④</td><td>AVM Deep Dive</td><td>12</td></tr>
-<tr><td>10:47–10:53</td><td>座学⑤</td><td>パラメータ受け渡し設計（Session 1 ご質問）</td><td>6</td></tr>
-<tr><td>10:53–10:59</td><td>シナリオ</td><td>シナリオ 01–02: モジュール / リモート状態</td><td>6</td></tr>
-<tr><td><strong>10:59–11:19</strong></td><td><strong>シナリオ ★</strong></td><td><strong>シナリオ 03: GitHub Actions（PR → Plan → 承認 → Apply）の全ステップ解説</strong></td><td><strong>20</strong></td></tr>
-<tr><td><strong>11:19–11:27</strong></td><td><strong>シナリオ ★</strong></td><td><strong>シナリオ 07: YAML パラメータ &amp; 納品 Excel 自動生成</strong></td><td><strong>8</strong></td></tr>
-<tr><td>11:27–11:30</td><td>まとめ</td><td>次のステップ</td><td>3</td></tr>
-<tr style="background:#e8f7ee"><td><strong>11:30–12:00</strong></td><td><strong>質疑応答</strong></td><td><strong>ご質問／<a href="#appendix">付録 A〜E</a> からご関心の高いテーマを掘り下げ</strong></td><td><strong>30</strong></td></tr></table>
+<p><strong>全 150 分</strong>（本編 120 分＋質疑応答 30 分。休憩 10 分を含む）　※各項目の所要時間は目安です。</p>
+<table><tr><th>区分</th><th>内容</th><th>目安（分）</th></tr>
+<tr><td>導入</td><td>Day 1 振り返り／本日のゴール</td><td>5</td></tr>
+<tr><td>座学①</td><td>モジュール & 再利用設計</td><td>12</td></tr>
+<tr><td>座学②</td><td>状態管理 Deep Dive</td><td>10</td></tr>
+<tr><td><strong>座学③ ★</strong></td><td><strong>GitHub Actions × Terraform Deep Dive</strong></td><td><strong>28</strong></td></tr>
+<tr><td>休憩</td><td>—</td><td>10</td></tr>
+<tr><td>座学④</td><td>AVM Deep Dive</td><td>12</td></tr>
+<tr><td>座学⑤</td><td>パラメータ受け渡し設計（Session 1 ご質問）</td><td>6</td></tr>
+<tr><td>シナリオ</td><td>シナリオ 01–02: モジュール / リモート状態</td><td>6</td></tr>
+<tr><td><strong>シナリオ ★</strong></td><td><strong>シナリオ 03: GitHub Actions（PR → Plan → 承認 → Apply）の全ステップ解説</strong></td><td><strong>20</strong></td></tr>
+<tr><td><strong>シナリオ ★</strong></td><td><strong>シナリオ 07: YAML パラメータ &amp; 納品 Excel 自動生成</strong></td><td><strong>8</strong></td></tr>
+<tr><td>まとめ</td><td>次のステップ</td><td>3</td></tr>
+<tr style="background:#e8f7ee"><td><strong>質疑応答</strong></td><td><strong>ご質問／<a href="#appendix">付録 A〜E</a> からご関心の高いテーマを掘り下げ</strong></td><td><strong>30</strong></td></tr>
+<tr><td colspan="2" style="text-align:right"><strong>合計</strong></td><td><strong>150</strong></td></tr></table>
 <div class="callout"><strong>★ 本日の主題:</strong> GitHub Actions × Terraform に合計 <strong>48 分</strong>（座学 28 分 + シナリオ 20 分）を配分しています。AVM は「パイプラインで何をデプロイするか」、GitHub Actions は「それをどう安全に届けるか」という関係で捉えてください。</div>
 <div class="callout tip"><strong>💡 本日の進め方 — 「シナリオ」形式について:</strong> 本日は<strong>その場でのコマンド実行は行わず</strong>、すでに構築・実行済みのパイプラインとその成果物を題材に、<strong>各ステップで何が起きているのか・なぜそれが必要なのかを 1 つずつ解説</strong>する形式で進めます。ネットワークやクラウド側の状態に左右されず、<strong>議論とご質問に時間を使える</strong>ためです。<br>本資料に掲載しているコード・コマンド・出力はすべて<strong>実際に動作確認済み</strong>です。公開リポジトリをそのままご利用いただけば、同じ結果を手元で再現できます。</div>
-<div class="callout tip"><strong>💡 末尾 30 分の使い方:</strong> 本編は <strong>11:30 で完結</strong>します。残り 30 分はご質問を最優先とし、ご質問が早く尽きた場合は <a href="#appendix">付録 A〜E</a> からご関心の高いテーマを選んで解説します。現行の運用に即したご相談もこの時間で承ります。</div>
+<div class="callout tip"><strong>💡 末尾 30 分の使い方:</strong> 本編は <strong>120 分で完結</strong>します。残りの約 30 分はご質問を最優先とし、ご質問が早く尽きた場合は <a href="#appendix">付録 A〜E</a> からご関心の高いテーマを選んで解説します。現行の運用に即したご相談もこの時間で承ります。</div>
 </section>
 
 <section id="modules"><h2>2. モジュール & 依存関係</h2>
@@ -1152,7 +1153,7 @@ parameters:
 </section>
 
 <section id="appendix"><h2>付録: 追加シナリオ</h2>
-<p>以下の 5 つは<strong>本編（〜11:30）には含めていません</strong>。末尾の質疑応答枠で、ご関心の高いものを選んで解説します。いずれも <code>terraform init</code> / <code>validate</code> 済みで、リポジトリからそのまま再現いただけます。</p>
+<p>以下の 5 つは<strong>本編には含めていません</strong>。末尾の質疑応答枠で、ご関心の高いものを選んで解説します。いずれも <code>terraform init</code> / <code>validate</code> 済みで、リポジトリからそのまま再現いただけます。</p>
 <table><tr><th>付録</th><th>テーマ</th><th>ディレクトリ</th><th>目安</th><th>関連する典型的なご相談</th></tr>
 <tr><td>A</td><td>AVM 参照 (VNet + Key Vault)</td><td><code>day2/04-avm-reference/</code></td><td>4 分</td><td>「AVM モジュールの実際の書き方をもう少し見たい」</td></tr>
 <tr><td>B</td><td>一貫インターフェースの適用例</td><td><code>day2/05-avm-consistent-interface/</code></td><td>4 分</td><td>「診断設定やロックを全リソースに統一したい」</td></tr>

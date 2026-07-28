@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../schema/params.schema.json
+# =============================================================================
+# 顧客パラメータ — Contoso 開発環境
+# =============================================================================
+# prod との差分が Git で一目で分かります。
+# （Excel では「どこが違うか」を目視で探すしかありませんでした）
+# =============================================================================
+
+location: japaneast
+
+costCenter: "1234-5678"
+owner: "infra@contoso.co.jp"
+
+# 開発環境のためコスト優先で無効
+enablePrivateEndpoint: false
+
+retentionDays: 30
+
+network:
+  addressSpace:
+    - "10.10.0.0/16"
+
+  subnets:
+    web:
+      name: snet-web
+      addressPrefixes: ["10.10.1.0/24"]
+    app:
+      name: snet-app
+      addressPrefixes: ["10.10.2.0/24"]
+
+additionalTags:
+  system: "受発注システム"
+  contractId: "CT-2026-0042"

@@ -1,0 +1,117 @@
+{
+  "parameters": [
+    {
+      "constraints": "許可値: japaneast / japanwest / eastasia / southeastasia",
+      "description": "リソースを配置する Azure リージョン",
+      "path": "location",
+      "title": "リージョン",
+      "type": "string",
+      "value": "japaneast"
+    },
+    {
+      "constraints": "形式: ^[0-9]{4}-[0-9]{4}$",
+      "description": "課金按分用のコードです。経理部門より払い出された値を入力してください。",
+      "path": "costCenter",
+      "title": "コストセンター",
+      "type": "string",
+      "value": "1234-5678"
+    },
+    {
+      "constraints": "形式: email",
+      "description": "障害発生時の連絡先です。",
+      "path": "owner",
+      "title": "管理者メールアドレス",
+      "type": "string",
+      "value": "infra@contoso.co.jp"
+    },
+    {
+      "constraints": "",
+      "description": "本番環境では必ず true にしてください。",
+      "path": "enablePrivateEndpoint",
+      "title": "Private Endpoint の有効化",
+      "type": "boolean",
+      "value": "有効"
+    },
+    {
+      "constraints": "範囲: 30 〜 730",
+      "description": "",
+      "path": "retentionDays",
+      "title": "ログ保持日数",
+      "type": "integer",
+      "value": "90"
+    },
+    {
+      "constraints": "",
+      "description": "CIDR 形式。オンプレミスと重複しない範囲を指定してください。",
+      "path": "network.addressSpace",
+      "title": "VNet アドレス空間",
+      "type": "array",
+      "value": "10.0.0.0/16"
+    },
+    {
+      "constraints": "形式: ^snet-[a-z0-9-]{1,20}$",
+      "description": "",
+      "path": "network.subnets.web.name",
+      "title": "サブネット名",
+      "type": "string",
+      "value": "snet-web"
+    },
+    {
+      "constraints": "",
+      "description": "",
+      "path": "network.subnets.web.addressPrefixes",
+      "title": "アドレスプレフィックス",
+      "type": "array",
+      "value": "10.0.1.0/24"
+    },
+    {
+      "constraints": "形式: ^snet-[a-z0-9-]{1,20}$",
+      "description": "",
+      "path": "network.subnets.app.name",
+      "title": "サブネット名",
+      "type": "string",
+      "value": "snet-app"
+    },
+    {
+      "constraints": "",
+      "description": "",
+      "path": "network.subnets.app.addressPrefixes",
+      "title": "アドレスプレフィックス",
+      "type": "array",
+      "value": "10.0.2.0/24"
+    },
+    {
+      "constraints": "形式: ^snet-[a-z0-9-]{1,20}$",
+      "description": "",
+      "path": "network.subnets.db.name",
+      "title": "サブネット名",
+      "type": "string",
+      "value": "snet-db"
+    },
+    {
+      "constraints": "",
+      "description": "",
+      "path": "network.subnets.db.addressPrefixes",
+      "title": "アドレスプレフィックス",
+      "type": "array",
+      "value": "10.0.3.0/24"
+    },
+    {
+      "constraints": "",
+      "description": "",
+      "path": "additionalTags.system",
+      "title": "",
+      "type": "string",
+      "value": "受発注システム"
+    },
+    {
+      "constraints": "",
+      "description": "",
+      "path": "additionalTags.contractId",
+      "title": "",
+      "type": "string",
+      "value": "CT-2026-0042"
+    }
+  ],
+  "resources": []
+}

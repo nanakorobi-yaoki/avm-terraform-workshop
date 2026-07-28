@@ -1,0 +1,260 @@
+# ===========================================================================
+# Demo 03 用ワークフロー（GitHub Actions × Terraform）
+#
+# ★ 重要 ★ GitHub Actions は「リポジトリのルートの .github/workflows/」しか
+#   読み込みません。day2/03-cicd/.github/workflows/ に置いたままでは
+#   永遠に起動しないため、デモ用にここへ配置しています。
+#   （day2/03-cicd/ 側は座学で読むための教材として残してあります）
+#
+# 対象ディレクトリ: day2/07-parameters（YAML パラメータのデモ構成）
+# ===========================================================================
+name: "Terraform Plan & Apply"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "day2/07-parameters/**"
+      - ".github/workflows/terraform.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "day2/07-parameters/**"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch: # ← セッション中に手動実行したいとき用
+
+permissions:
+  id-token: write # OIDC トークン取得に必要
+  contents: read
+  pull-requests: write
+
+# ---------------------------------------------------------------------------
+# ★ state ロック競合を防ぐ直列化
+#   cancel-in-progress は必ず false：apply 途中で強制終了すると
+#   Azure 上にリソースは作られたのに state に無い「孤児リソース」が発生します。
+# ---------------------------------------------------------------------------
+concurrency:
+  group: terraform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # ★ CI と手元の Terraform バージョンは必ず揃える ★
+  #   1.9.0 だと AVM VNet 0.19.0 の ipam_pools の validation が
+  #   `length(null)` で落ちます（古い Terraform は || の短絡評価をしないため）。
+  #   「手元では通るのに CI で落ちる」典型例です。
+  TF_VERSION: "1.15.8"
+  WORKING_DIR: "day2/07-parameters"
+  TF_IN_AUTOMATION: "true"
+  # ── 07-parameters が要求する変数 ──
+  TF_VAR_customer: "contoso"
+  TF_VAR_env: "dev"
+  TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  # ── OIDC 認証（クライアントシークレット不要） ──
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_OIDC: true
+
+jobs:
+  # ─────────────────────────────────────
+  # Job 1: 静的解析 & セキュリティスキャン（Azure 認証不要）
+  # ─────────────────────────────────────
+  validate:
+    name: "Validate & Lint"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      # リポジトリ全体を整形チェック（day1 も含めて崩れを検知）
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive day1 day2
+
+      - name: Terraform Init (backend なし)
+        run: terraform init -backend=false
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      # 設定はリポジトリルートの .tflint.hcl を明示的に参照
+      # （tflint は既定でカレントディレクトリしか見ないため）
+      - name: TFLint
+        run: |
+          tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
+          tflint --config "$GITHUB_WORKSPACE/.tflint.hcl" --format compact
+        working-directory: ${{ env.WORKING_DIR }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkov (Security Scan)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: ${{ env.WORKING_DIR }}
+          framework: terraform
+          soft_fail: true # デモ中に赤くしないため。実運用では false 推奨
+
+  # ─────────────────────────────────────
+  # Job 2: Plan（Azure OIDC 認証あり）
+  # ─────────────────────────────────────
+  plan:
+    name: "Terraform Plan"
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: plan # ← environment を付けると sub クレームが変わる点に注意
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.WORKING_DIR }}
+
+      # pipefail が無いと tee 側の終了コードになり、plan 失敗を見逃します
+      - name: Terraform Plan
+        id: plan
+        shell: bash
+        run: |
+          set -o pipefail
+          terraform plan -no-color -out=tfplan | tee plan_output.txt
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: |
+            ${{ env.WORKING_DIR }}/tfplan
+            ${{ env.WORKING_DIR }}/plan_output.txt
+          retention-days: 5
+
+      # -----------------------------------------------------------------
+      # PR に plan 結果をコメント（sticky: 既存コメントを更新）
+      #
+      # ★ plan 出力をテンプレートに直接埋めないこと：
+      #   出力にバッククォートや ${ が含まれると JS の文字列展開が壊れ、
+      #   スクリプトインジェクションの経路にもなります。
+      #   必ずファイル / env 経由で渡します。
+      # -----------------------------------------------------------------
+      - name: Comment Plan on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          WORKDIR: ${{ env.WORKING_DIR }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- terraform-plan -->';
+
+            let plan = '';
+            try {
+              plan = fs.readFileSync(`${process.env.WORKDIR}/plan_output.txt`, 'utf8');
+            } catch (e) {
+              plan = '(plan 出力を読み取れませんでした)';
+            }
+
+            // GitHub のコメント上限は 65536 文字
+            const MAX = 55000;
+            if (plan.length > MAX) {
+              plan = plan.slice(0, MAX) + '\n\n... (出力が長いため省略。全文は Actions のログを参照)';
+            }
+
+            const body = [
+              marker,
+              '### Terraform Plan 📋',
+              '',
+              '<details><summary>plan 結果を展開</summary>',
+              '',
+              '```terraform',
+              plan,
+              '```',
+              '',
+              '</details>',
+              '',
+              `<sub>Commit \`${context.sha}\` / Actor @${context.actor}</sub>`,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                comment_id: existing.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body,
+              });
+            }
+
+  # ─────────────────────────────────────
+  # Job 3: Apply（main への push のみ / 手動承認ゲート）
+  # ─────────────────────────────────────
+  apply:
+    name: "Terraform Apply"
+    needs: plan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production # ← 環境保護ルール（手動承認）をここで効かせる
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.WORKING_DIR }}
+
+      # plan 時の tfplan をそのまま適用する（再 plan しない = 差分混入を防ぐ）
+      - name: Download Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.WORKING_DIR }}
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -no-color tfplan
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Summary
+        run: echo "### ✅ Apply 完了 (\`${{ env.WORKING_DIR }}\`)" >> "$GITHUB_STEP_SUMMARY"

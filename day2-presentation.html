@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 2 — モジュール・状態・CI/CD・AVM Deep Dive ガイド</title>
+<style>
+:root{--azure:#0078D4;--azure-dk:#003366;--azure-lt:#50B0F0;--accent:#00B7C3;--bg:#F0F6FF;--code-bg:#1B1B1F;--code:#D4D4D4;--kw:#569CD6;--str:#CE9178;--cmt:#6A9955;--fn:#DCDCAA;--w:#FFF;--g1:#F5F5F5;--g2:#E5E5E5;--g7:#444;--g9:#1A1A1A;--sidebar-w:260px}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Segoe UI','Noto Sans JP',sans-serif;color:var(--g9);line-height:1.8;background:var(--w);transition:margin-left .25s ease}
+body.sidebar-pinned{margin-left:var(--sidebar-w)}
+header{background:linear-gradient(135deg,var(--azure-dk),var(--azure),var(--accent));color:var(--w);padding:48px 40px;text-align:center}
+header h1{font-size:2.2rem;margin-bottom:10px}header p{font-size:1.1rem;opacity:.9}header .meta{margin-top:16px;font-size:.9rem;opacity:.7}
+
+.sidebar-edge{position:fixed;top:0;left:0;width:12px;height:100vh;z-index:999;cursor:pointer}
+
+.sidebar{position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;background:var(--azure-dk);color:var(--w);overflow-y:auto;z-index:1000;padding:16px 0;font-size:.82rem;scrollbar-width:thin;scrollbar-color:var(--azure-lt) var(--azure-dk);transform:translateX(-100%);transition:transform .25s ease}
+.sidebar.open{transform:translateX(0)}
+.sidebar::-webkit-scrollbar{width:5px}.sidebar::-webkit-scrollbar-thumb{background:var(--azure-lt);border-radius:3px}
+.sidebar .logo-row{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 14px;border-bottom:1px solid rgba(255,255,255,.2);margin-bottom:8px}
+.sidebar .logo-row .logo-text{font-size:1rem;font-weight:700;color:var(--azure-lt)}
+.sidebar .pin-btn{background:none;border:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.7);cursor:pointer;padding:3px 8px;border-radius:4px;font-size:.8rem;transition:all .15s}
+.sidebar .pin-btn:hover{border-color:var(--accent);color:var(--w)}
+.sidebar .pin-btn.pinned{background:var(--accent);color:var(--azure-dk);border-color:var(--accent)}
+.sidebar a{display:block;padding:6px 16px;color:rgba(255,255,255,.75);text-decoration:none;transition:all .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar a:hover,.sidebar a.active{background:rgba(255,255,255,.12);color:var(--w);border-left:3px solid var(--accent);padding-left:13px}
+.sidebar .section-group{margin-bottom:2px}
+.sidebar .section-label{display:flex;align-items:center;justify-content:space-between;padding:8px 16px 4px;font-size:.68rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--azure-lt);cursor:pointer;user-select:none}
+.sidebar .section-label::after{content:'▾';font-size:.75rem;transition:transform .2s}
+.sidebar .section-label.collapsed::after{transform:rotate(-90deg)}
+.sidebar .section-items{max-height:500px;overflow:hidden;transition:max-height .3s ease}
+.sidebar .section-items.collapsed{max-height:0}
+.sidebar .sub-item{padding-left:28px;font-size:.78rem;color:rgba(255,255,255,.55)}
+
+.container{max-width:100%;padding:32px 48px}
+.toc{display:none}
+section{margin-bottom:48px;padding-top:16px;border-top:2px solid var(--g2);scroll-margin-top:16px}section:first-of-type{border-top:none}
+h2{font-size:1.7rem;color:var(--azure-dk);margin-bottom:14px;padding-bottom:8px;border-bottom:3px solid var(--azure)}
+h3{font-size:1.25rem;color:var(--azure);margin:24px 0 10px}h4{font-size:1.05rem;color:var(--g7);margin:18px 0 8px}
+p{margin-bottom:12px}ul,ol{margin:0 0 14px 22px}li{margin-bottom:5px}
+pre{background:var(--code-bg);color:var(--code);padding:16px 20px;border-radius:8px;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.82rem;line-height:1.55;overflow-x:auto;margin:12px 0 18px;border-left:4px solid var(--azure)}
+code{background:var(--g1);padding:2px 5px;border-radius:4px;font-family:'Cascadia Code',Consolas,monospace;font-size:.86em;color:var(--azure-dk)}pre code{background:none;padding:0;color:inherit}
+.kw{color:var(--kw)}.str{color:var(--str)}.cmt{color:var(--cmt)}.fn{color:var(--fn)}
+table{width:100%;border-collapse:collapse;margin:14px 0 20px;font-size:.88rem}
+th{background:var(--azure);color:var(--w);padding:10px 14px;text-align:left}td{padding:8px 14px;border-bottom:1px solid var(--g2)}tr:nth-child(even) td{background:var(--bg)}
+.callout{border-left:4px solid var(--accent);background:var(--bg);padding:14px 18px;border-radius:0 8px 8px 0;margin:14px 0 20px}
+.warn{border-left-color:#D83B01;background:#FFF4F0}.tip{border-left-color:#107C10;background:#F0FFF0}
+.callout strong{color:var(--azure)}.warn strong{color:#D83B01}.tip strong{color:#107C10}
+a{color:var(--azure)}
+@media(max-width:768px){.sidebar,.sidebar-edge{display:none}body,body.sidebar-pinned{margin-left:0}header{padding:32px 20px}.container{padding:24px 16px}.toc{display:block;background:var(--bg);border-radius:8px;padding:16px 20px;margin-bottom:32px;border-left:4px solid var(--azure)}.toc h2{color:var(--azure);font-size:1.1rem;margin-bottom:8px}.toc ol{padding-left:18px}.toc a{color:var(--azure);text-decoration:none}}
+@media print{.sidebar,.sidebar-edge{display:none}body,body.sidebar-pinned{margin-left:0}.container{max-width:100%;padding:20px}.toc{display:block}pre{font-size:.75rem}}
+</style>
+</head>
+<body>
+
+<div class="sidebar-edge" id="edge"></div>
+
+<nav class="sidebar" id="sidebar">
+  <div class="logo-row">
+    <span class="logo-text">Day 2 ガイド</span>
+    <button class="pin-btn" id="pinBtn" onclick="togglePin()">📌 固定</button>
+  </div>
+
+  <div class="section-group">
+    <div class="section-label" onclick="toggleSection(this)">概要</div>
+    <div class="section-items">
+      <a href="#agenda">セッションアジェンダ</a>
+    </div>
+  </div>
+
+  <div class="section-group">
+    <div class="section-label" onclick="toggleSection(this)">座学①</div>
+    <div class="section-items">
+      <a href="#modules">モジュール & 依存関係</a>
+      <a href="#state">リモート状態管理</a>
+      <a href="#cicd">CI/CD パイプライン</a>
+    </div>
+  </div>
+
+  <div class="section-group">
+    <div class="section-label" onclick="toggleSection(this)">座学② AVM</div>
+    <div class="section-items">
+      <a href="#avm-deep">AVM Deep Dive</a>
+      <a href="#popular">よく使われるモジュール</a>
+    </div>
+  </div>
+
+  <div class="section-group">
+    <div class="section-label" onclick="toggleSection(this)">デモ</div>
+    <div class="section-items">
+      <a href="#demo01">Demo 01: モジュール</a>
+      <a href="#demo02">Demo 02: リモート状態</a>
+      <a href="#demo03">Demo 03: CI/CD ★</a>
+      <a href="#demo07">Demo 07: パラメータ ★</a>
+    </div>
+  </div>
+
+  <div class="section-group">    <div class="section-label" onclick="toggleSection(this)">設計トピック</div>
+    <div class="section-items">
+      <a href="#params">パラメータ受け渡し設計</a>
+      <a class="sub-item" href="#params-compare">選択肢の比較</a>
+      <a class="sub-item" href="#params-steps">入力側を固める</a>
+      <a class="sub-item" href="#params-trust">検証可能にする 3 つの仕掛け ★</a>
+      <a class="sub-item" href="#params-formats">Excel 以外の納品形式</a>
+      <a class="sub-item" href="#params-excel">逆方向（Excel で提出）</a>
+    </div>
+  </div>
+
+  <div class="section-group">    <div class="section-label" onclick="toggleSection(this)">付録（追加デモ）</div>
+    <div class="section-items">
+      <a href="#appendix">付録一覧</a>
+      <a class="sub-item" href="#appendix-a">A: AVM 参照 VNet+KV</a>
+      <a class="sub-item" href="#appendix-b">B: 一貫 I/F</a>
+      <a class="sub-item" href="#appendix-c">C: マルチティア</a>
+    </div>
+  </div>
+
+  <div class="section-group">    <div class="section-label" onclick="toggleSection(this)">まとめ</div>
+    <div class="section-items">
+      <a href="#summary">まとめ & 次のステップ</a>
+      <a href="#links">参照リンク集</a>
+    </div>
+  </div>
+</nav>
+
+<script>
+const sb=document.getElementById('sidebar'),edge=document.getElementById('edge'),pin=document.getElementById('pinBtn');
+let pinned=false;
+edge.addEventListener('mouseenter',()=>{if(!pinned)sb.classList.add('open')});
+sb.addEventListener('mouseleave',()=>{if(!pinned)sb.classList.remove('open')});
+function togglePin(){
+  pinned=!pinned;
+  sb.classList.toggle('open',pinned);
+  pin.classList.toggle('pinned',pinned);
+  document.body.classList.toggle('sidebar-pinned',pinned);
+  pin.textContent=pinned?'📌 固定中':'📌 固定';
+}
+function toggleSection(el){el.classList.toggle('collapsed');el.nextElementSibling.classList.toggle('collapsed')}
+document.addEventListener('scroll',()=>{
+  const ss=document.querySelectorAll('section[id]'),ls=document.querySelectorAll('.sidebar a[href^="#"]');
+  let c='';ss.forEach(s=>{if(scrollY>=s.offsetTop-80)c=s.id});
+  ls.forEach(l=>l.classList.toggle('active',l.getAttribute('href')==='#'+c));
+});
+</script>
+
+<header>
+<h1>Day 2 — モジュール・状態・CI/CD・AVM</h1>
+<p>Azure Infrastructure as Code with Azure Verified Modules</p>
+<div class="meta">2026年7月29日(水) 9:30–12:00 JST（150 分）　｜　講師: Harshad Khole (コレ ハルシャド) — Microsoft CSA</div>
+</header>
+<div class="container">
+<nav class="toc"><h2>目次</h2><ol>
+<li><a href="#agenda">セッションアジェンダ</a></li>
+<li><a href="#modules">モジュール & 依存関係</a></li>
+<li><a href="#demo01">Demo 01: ローカルモジュール</a></li>
+<li><a href="#state">リモート状態管理</a></li>
+<li><a href="#demo02">Demo 02: Azure Blob Backend</a></li>
+<li><a href="#cicd">GitHub Actions × Terraform Deep Dive ★</a></li>
+<li><a href="#demo03">Demo 03: GitHub Actions 実演 ★</a></li>
+<li><a href="#avm-deep">AVM Deep Dive</a></li>
+<li><a href="#popular">よく使われる AVM モジュール</a></li>
+<li><a href="#params">パラメータ受け渡しの再設計（Excel 納品の次の一手）★</a></li>
+<li><a href="#demo07">Demo 07: YAML パラメータ & Excel 自動生成 ★</a></li>
+<li><a href="#summary">まとめ & 次のステップ</a></li>
+<li><a href="#links">参照リンク集</a></li>
+</ol>
+<p style="margin:.6em 0 0"><strong><a href="#appendix">付録: 時間に余裕がある場合の追加デモ（A〜E）</a></strong></p>
+</nav>
+
+<section id="agenda"><h2>1. セッションアジェンダ</h2>
+<p><strong>2026年7月29日(水) 9:30–12:00 JST</strong>（本編 120 分＋質疑応答 30 分。休憩 10 分を含む）</p>
+<table><tr><th>時刻</th><th>区分</th><th>内容</th><th>分</th></tr>
+<tr><td>9:30–9:35</td><td>導入</td><td>Day 1 振り返り／本日のゴール</td><td>5</td></tr>
+<tr><td>9:35–9:47</td><td>座学①</td><td>モジュール & 再利用設計</td><td>12</td></tr>
+<tr><td>9:47–9:57</td><td>座学②</td><td>状態管理 Deep Dive</td><td>10</td></tr>
+<tr><td><strong>9:57–10:25</strong></td><td><strong>座学③ ★</strong></td><td><strong>GitHub Actions × Terraform Deep Dive</strong></td><td><strong>28</strong></td></tr>
+<tr><td>10:25–10:35</td><td>休憩</td><td>—</td><td>10</td></tr>
+<tr><td>10:35–10:47</td><td>座学④</td><td>AVM Deep Dive</td><td>12</td></tr>
+<tr><td>10:47–10:53</td><td>座学⑤</td><td>パラメータ受け渡し設計（Session 1 ご質問）</td><td>6</td></tr>
+<tr><td>10:53–10:59</td><td>デモ</td><td>Demo 01–02: モジュール / リモート状態</td><td>6</td></tr>
+<tr><td><strong>10:59–11:19</strong></td><td><strong>デモ ★</strong></td><td><strong>Demo 03: GitHub Actions 実演（PR → Plan → 承認 → Apply）</strong></td><td><strong>20</strong></td></tr>
+<tr><td><strong>11:19–11:27</strong></td><td><strong>デモ ★</strong></td><td><strong>Demo 07: YAML パラメータ &amp; 納品 Excel 自動生成</strong></td><td><strong>8</strong></td></tr>
+<tr><td>11:27–11:30</td><td>まとめ</td><td>次のステップ</td><td>3</td></tr>
+<tr style="background:#e8f7ee"><td><strong>11:30–12:00</strong></td><td><strong>質疑応答</strong></td><td><strong>ご質問／追加デモ（<a href="#appendix">付録 A〜E</a> からご希望のものを実演）</strong></td><td><strong>30</strong></td></tr></table>
+<div class="callout"><strong>★ 本日の主題:</strong> GitHub Actions × Terraform に合計 <strong>48 分</strong>（座学 28 分 + デモ 20 分）を配分しています。AVM は「パイプラインで何をデプロイするか」、GitHub Actions は「それをどう安全に届けるか」という関係で捉えてください。</div>
+<div class="callout tip"><strong>💡 末尾 30 分の使い方:</strong> 本編は <strong>11:30 で完結</strong>します。残り 30 分はご質問を最優先とし、ご質問が早く尽きた場合は <a href="#appendix">付録 A〜E</a> からご関心の高いデモを選んで実演します。<strong>すべて実行確認済み</strong>なので、その場でのリクエストに対応できます。</div>
+<div class="callout warn"><strong>⚠️ 進行が遅れた場合の削り方（優先度の低い順）:</strong> ① 9 章「よく使われる AVM モジュール」は一覧を指し示すだけにする（△2 分）→ ② Demo 01–02 を <code>plan</code> の説明のみにする（△3 分）→ ③ 座学②の状態ロック実演を図解説明に切り替える（△3 分）。<strong>Demo 03 と Demo 07 は削らないでください</strong> — 本日の主題と Session 1 のご質問への回答そのものです。</div>
+</section>
+
+<section id="modules"><h2>2. モジュール & 依存関係</h2>
+<h3>モジュールとは</h3>
+<p>Terraform モジュールとは、再利用可能なコードのまとまりです。<code>.tf</code> ファイルが入ったディレクトリが 1 つのモジュールになります。</p>
+<h3>モジュールソース</h3>
+<table><tr><th>ソース</th><th>構文</th><th>用途</th></tr>
+<tr><td>ローカル</td><td><code>source = "./modules/storage"</code></td><td>プロジェクト内</td></tr>
+<tr><td>Registry</td><td><code>source = "Azure/avm-res-.../azurerm"</code></td><td>AVM 公開モジュール</td></tr>
+<tr><td>GitHub</td><td><code>source = "github.com/org/repo//path"</code></td><td>プライベート</td></tr>
+<tr><td>Azure DevOps</td><td><code>source = "git::https://dev.azure.com/..."</code></td><td>社内レジストリ</td></tr></table>
+<h3>依存関係</h3>
+<ul>
+<li><strong>暗黙的依存</strong>: 属性を参照することで自動的に順序が決まる — <code>rg = azurerm_resource_group.demo.name</code></li>
+<li><strong>明示的依存</strong>: <code>depends_on = [azurerm_resource_group.demo]</code> で明示的に指定</li>
+</ul>
+<div class="callout warn"><strong>⚠️ よくある落とし穴:</strong> <code>depends_on</code> をモジュールに付けると、モジュール内の<strong>全リソース</strong>が待ちになり、並列度が落ちて <code>apply</code> が遅くなります。また <code>depends_on</code> には変数や式を使えません（静的な参照のみ）。基本は暗黙的依存を使い、<strong>本当に順序保証が必要なときだけ</strong> <code>depends_on</code> を使ってください。</div>
+
+<h3>モジュールの入出力設計</h3>
+<p>モジュールは<strong>関数</strong>だと考えると設計しやすくなります。<code>variable</code> = 引数、<code>output</code> = 戻り値、モジュール内部 = 実装詳細（隠蔽）。</p>
+<table><tr><th>原則</th><th>内容</th></tr>
+<tr><td>入力は最小限に</td><td><code>optional()</code> で既定値を持たせ、必須項目を減らす</td></tr>
+<tr><td>出力は惜しみなく</td><td>周辺モジュールが必要とする ID / 名前は必ず <code>output</code> する</td></tr>
+<tr><td>Provider を定義しない</td><td>子モジュールでは <code>provider</code> ブロックを書かない（呼び出し側から渡す）</td></tr>
+<tr><td>リソースを作りすぎない</td><td>1 モジュール = 1 関心事。RG ごと包むのは再利用性を下げる</td></tr></table>
+
+<h3>モジュールの繰り返し — <code>for_each</code> / <code>count</code></h3>
+<pre><span class="cmt"># 複数環境を一括展開（for_each 推奨）</span>
+<span class="kw">module</span> <span class="str">"storage"</span> {
+  <span class="kw">for_each</span> = {
+    app  = { containers = [<span class="str">"data"</span>, <span class="str">"logs"</span>] }
+    logs = { containers = [<span class="str">"archive"</span>] }
+  }
+
+  <span class="kw">source</span> = <span class="str">"./modules/storage"</span>
+  name       = <span class="str">"st${each.key}${var.suffix}"</span>
+  containers = each.value.containers
+}
+
+<span class="cmt"># 参照は module.storage["app"].id のようにキーでアクセス</span></pre>
+<div class="callout warn"><strong>⚠️ <code>count</code> ではなく <code>for_each</code> を使う理由:</strong> <code>count</code> はインデックス管理のため、<strong>リストの途中の要素を削除すると以降のリソースが全て再作成されます</strong>（<code>[0],[1],[2]</code> から <code>[1]</code> を消すと <code>[2]</code>→<code>[1]</code> にズレる）。<code>for_each</code> は文字列キー管理なので影響しません。本番環境では致命的な差が出ます。</div>
+
+<h3>ラッパーモジュールパターン（SI 事業で最も重要）</h3>
+<p>AVM をそのまま使うのではなく、<strong>自社標準を乗せた薄いラッパー</strong>を一層挿すと、案件横断の標準化が一気に進みます。</p>
+<pre><span class="cmt"># modules/corp-vnet/main.tf — 自社標準ラッパー</span>
+<span class="kw">module</span> <span class="str">"vnet"</span> {
+  <span class="kw">source</span>  = <span class="str">"Azure/avm-res-network-virtualnetwork/azurerm"</span>
+  <span class="kw">version</span> = <span class="str">"~&gt; 0.19.0"</span>   <span class="cmt"># ← version はラッパー内で一元管理（3 桁固定。詳細は 8 章）</span>
+
+  <span class="cmt"># 命名規則を強制（案件ごとにブレない）</span>
+  name = <span class="str">"vnet-${var.customer}-${var.env}-${var.location_short}"</span>
+
+  <span class="cmt"># 共通タグを強制（課金・監査のため必須）</span>
+  tags = merge(var.tags, {
+    customer   = var.customer
+    env        = var.env
+    managed_by = <span class="str">"terraform"</span>
+    wrapper_module = <span class="str">"corp-vnet/1.2.0"</span>
+  })
+
+  address_space = var.address_space
+  subnets       = var.subnets
+}</pre>
+<div class="callout tip"><strong>💡 この層の価値:</strong> AVM のバージョンアップを<strong>1 か所で吸収</strong>できます。ラッパーを v1.3.0 に上げるだけで、全案件が同じペースで追従できます。案件リポジトリが直接 AVM を参照していると、バージョン上げが N 件分の作業になります。</div>
+
+<h3>バージョン管理と公開</h3>
+<pre><span class="cmt"># Git タグでバージョンを固定（ブランチ参照は本番 NG）</span>
+<span class="kw">module</span> <span class="str">"vnet"</span> {
+  <span class="cmt"># ✗ 悪い例: main が動くと意図せず変更が入る</span>
+  <span class="cmt"># source = "git::https://dev.azure.com/sts/iac/_git/modules//vnet"</span>
+
+  <span class="cmt"># ✓ 良い例: タグで固定</span>
+  <span class="kw">source</span> = <span class="str">"git::https://dev.azure.com/sts/iac/_git/modules//vnet?ref=v1.2.0"</span>
+}</pre>
+</section>
+
+<section id="demo01"><h2>3. Demo 01: ローカルモジュール</h2>
+<p><strong>ディレクトリ:</strong> <code>day2/01-modules/</code></p>
+<pre><span class="kw">module</span> <span class="str">"storage_app"</span> {
+  <span class="kw">source</span> = <span class="str">"./modules/storage"</span>
+  name   = <span class="str">"stmoduledemoapp001"</span>
+  resource_group_name = azurerm_resource_group.demo.name
+  location            = azurerm_resource_group.demo.location
+  containers = [<span class="str">"data"</span>, <span class="str">"logs"</span>]
+}</pre>
+<pre>cd day2/01-modules
+terraform init &amp;&amp; terraform plan &amp;&amp; terraform apply -auto-approve
+terraform output
+terraform destroy -auto-approve</pre>
+</section>
+
+<section id="state"><h2>4. リモート状態管理</h2>
+<h3>ローカル状態の問題</h3>
+<ul><li>チーム共有不可</li><li>同時実行で競合</li><li>sensitive 値が PC 上に平文</li><li>バックアップなし</li></ul>
+<h3>Azure Blob Backend</h3>
+<pre><span class="kw">terraform</span> {
+  <span class="kw">backend</span> <span class="str">"azurerm"</span> {
+    resource_group_name  = <span class="str">"rg-terraform-state"</span>
+    storage_account_name = <span class="str">"stterraformstate001"</span>
+    container_name       = <span class="str">"tfstate"</span>
+    key                  = <span class="str">"workshop/demo.tfstate"</span>
+  }
+}</pre>
+<p><strong>メリット:</strong> Blob Lease でロック（同時実行防止）/ SSE で暗号化 / バージョニングで履歴保持 / RBAC でアクセス制御</p>
+
+<h3>ロックはどう動いているか</h3>
+<p>Terraform は <code>apply</code> 開始時に状態ファイル Blob に対して <strong>Blob Lease</strong>（排他ロック）を取得します。他の実行が同じ state に触れようとすると即座にエラーになります。</p>
+<pre>Error: Error acquiring the state lock
+
+Lock Info:
+  ID:        3f2a1b4c-...
+  Operation: OperationTypeApply
+  Who:       runner@fv-az123
+  Created:   2026-07-28 09:12:33 UTC</pre>
+<div class="callout warn"><strong>⚠️ <code>force-unlock</code> は最終手段:</strong> パイプラインがタイムアウトしてロックが残ることがあります。<code>terraform force-unlock &lt;LOCK_ID&gt;</code> で解除できますが、<strong>別の apply が本当に実行中でないことを必ず確認</strong>してから実行してください。実行中に解除すると state が壊れます。CI 側では <code>concurrency</code> でそもそも同時実行させないのが正解です（後述）。</div>
+
+<h3>知っておくべき state 操作コマンド</h3>
+<table><tr><th>コマンド</th><th>用途</th><th>危険度</th></tr>
+<tr><td><code>terraform state list</code></td><td>管理下のリソース一覧</td><td>安全</td></tr>
+<tr><td><code>terraform state show &lt;addr&gt;</code></td><td>属性の確認</td><td>安全</td></tr>
+<tr><td><code>terraform state mv</code></td><td>リソース名/モジュールのリファクタ時に必須</td><td>中</td></tr>
+<tr><td><code>terraform state rm</code></td><td>管理外にする（実リソースは残る）</td><td>高</td></tr>
+<tr><td><code>terraform import</code> / <code>import</code> ブロック</td><td>既存リソースの取り込み</td><td>中</td></tr>
+<tr><td><code>terraform state pull &gt; backup.tfstate</code></td><td><strong>危険な操作前のバックアップ</strong></td><td>安全</td></tr></table>
+<div class="callout tip"><strong>💡 リファクタは <code>moved</code> ブロックで:</strong> Terraform 1.1+ では <code>state mv</code> を手で叩く代わりに、コードに <code>moved { from = ... to = ... }</code> を書けます。<strong>PR でレビューでき</strong>、CI で自動適用され、履歴も残るため、チーム開発では圧倒的に優れています。</div>
+
+<h3>state の分割戦略 — どこで切るか</h3>
+<p>1 つの state が巨大化すると <code>plan</code> が遅くなり、失敗時の影響範囲も広がります。<strong>ライフサイクルと変更頻度で切る</strong>のが原則です。</p>
+<pre>tfstate/
+  ├─ platform/network.tfstate      <span class="cmt"># 変更頻度：低、影響：大</span>
+  ├─ platform/security.tfstate     <span class="cmt"># Key Vault, Log Analytics</span>
+  ├─ workload/app-prod.tfstate     <span class="cmt"># 変更頻度：高、影響：小</span>
+  └─ workload/app-dev.tfstate</pre>
+<p>別 state の値を参照するには <code>terraform_remote_state</code> データソースを使います（相手側で <code>output</code> 定義が必要）。</p>
+<pre><span class="kw">data</span> <span class="str">"terraform_remote_state"</span> <span class="str">"network"</span> {
+  <span class="kw">backend</span> = <span class="str">"azurerm"</span>
+  <span class="kw">config</span> = {
+    resource_group_name  = <span class="str">"rg-terraform-state"</span>
+    storage_account_name = <span class="str">"stterraformstate001"</span>
+    container_name       = <span class="str">"tfstate"</span>
+    key                  = <span class="str">"platform/network.tfstate"</span>
+  }
+}
+
+<span class="cmt"># 参照</span>
+subnet_id = data.terraform_remote_state.network.outputs.subnet_ids[<span class="str">"app"</span>]</pre>
+
+<h3>部分バックエンド設定（CI で必須）</h3>
+<p><code>backend</code> ブロックには<strong>変数が使えません</strong>。環境ごとに key を切り替えるには <code>-backend-config</code> を使います。</p>
+<pre><span class="cmt"># backend ブロックは空で宣言</span>
+terraform { backend <span class="str">"azurerm"</span> {} }</pre>
+<pre><span class="cmt"># CI から環境別の値を注入</span>
+terraform init \
+  -backend-config=<span class="str">"resource_group_name=rg-terraform-state"</span> \
+  -backend-config=<span class="str">"storage_account_name=${TFSTATE_SA}"</span> \
+  -backend-config=<span class="str">"container_name=tfstate"</span> \
+  -backend-config=<span class="str">"key=${CUSTOMER}/${ENV}.tfstate"</span>   <span class="cmt"># ← 案件×環境で分離</span></pre>
+<div class="callout warn"><strong>⚠️ state は機密情報です:</strong> パスワードや接続文字列は <code>sensitive</code> であっても <strong>state 内には平文で保存</strong>されます。Storage Account は必ずパブリックアクセス無効 + RBAC 最小権限、可能なら Private Endpoint を適用してください。</div>
+</section>
+
+<section id="demo02"><h2>5. Demo 02: Azure Blob Backend</h2>
+<p><strong>ディレクトリ:</strong> <code>day2/02-remote-state/</code></p>
+<pre>cd day2/02-remote-state
+terraform init          <span class="cmt"># ローカル状態で Storage Account を作成</span>
+terraform apply -auto-approve
+<span class="cmt"># → backend ブロックのコメントを解除</span>
+terraform init -migrate-state   <span class="cmt"># ローカル → リモートへ移行</span></pre>
+</section>
+
+<section id="cicd"><h2>6. GitHub Actions × Terraform Deep Dive ★</h2>
+<div class="callout"><strong>本日の主題です（33 分）。</strong> AVM が「何をデプロイするか」を標準化するのに対し、GitHub Actions は「それをどう安全に・繰り返し届けるか」を standardize します。両方揃って初めて本番運用に耐えます。</div>
+
+<h3>6.1 GitOps の考え方 — Pull Request を「変更申請書」にする</h3>
+<table><tr><th>従来の運用</th><th>GitOps + GitHub Actions</th></tr>
+<tr><td>変更申請書（Excel / ワークフローシステム）</td><td><strong>Pull Request</strong></td></tr>
+<tr><td>影響範囲を人が机上で確認</td><td><strong><code>terraform plan</code> の自動コメント</strong></td></tr>
+<tr><td>上長がメールで承認</td><td><strong>PR レビュー + Environment 承認ゲート</strong></td></tr>
+<tr><td>担当者が手作業で本番投入</td><td><strong>merge をトリガに自動 apply</strong></td></tr>
+<tr><td>作業記録を別途作成</td><td><strong>Git 履歴 + Actions 実行ログ（改ざん不可）</strong></td></tr></table>
+<div class="callout tip"><strong>💡 ISMS / P マーク観点:</strong> 「誰が申請し、誰が承認し、いつ何が変わったか」が全て自動で記録されます。監査証跡の作成工数そのものがゼロになるのが、CI/CD 導入の最も大きな副次効果です。</div>
+
+<h3>6.2 OIDC 認証 Deep Dive（最重要）</h3>
+<h4>従来方式の何が問題か</h4>
+<ul>
+<li>Service Principal の <strong>Client Secret を GitHub Secrets に保存</strong> → 漏洩したら即座にサブスクリプションが危険</li>
+<li>Secret に有効期限がある → <strong>切れるとパイプラインが突然停止</strong>（よくある障害）</li>
+<li>定期ローテーションの運用コスト（案件数 × 環境数だけ発生）</li>
+</ul>
+<h4>OIDC の認証シーケンス</h4>
+<pre>┌──────────────┐                    ┌────────────────┐              ┌───────┐
+│GitHub Actions│                    │  Microsoft     │              │ Azure │
+│   Runner     │                    │  Entra ID      │              │  API  │
+└──────┬───────┘                    └───────┬────────┘              └───┬───┘
+       │ ① OIDC トークン要求                 │                           │
+       │   (id-token: write が必要)          │                           │
+       │                                    │                           │
+       │ ② 署名付き JWT を取得               │                           │
+       │   claims: sub, iss, aud            │                           │
+       │────────────────────────────────────▶│                           │
+       │ ③ JWT を提示して Azure トークン要求  │                           │
+       │                                    │ ④ Federated Credential の │
+       │                                    │   subject と照合          │
+       │◀───────────────────────────────────│                           │
+       │ ⑤ Azure アクセストークン（短命）     │                           │
+       │──────────────────────────────────────────────────────────────▶│
+       │ ⑥ Terraform が Azure リソースを操作                            │
+       └───────────────────────────────────────────────────────────────┘
+
+★ 保存された長期シークレットは一切存在しない</pre>
+
+<h4>Federated Credential の <code>subject</code> — ここが最頻出のハマりどころ</h4>
+<p>Entra ID 側に登録する <code>subject</code> が、GitHub が発行する JWT の <code>sub</code> クレームと<strong>完全一致</strong>しなければ認証は失敗します。トリガの種類ごとに <code>sub</code> の形が変わります。</p>
+<table><tr><th>ワークフローの実行条件</th><th>登録すべき <code>subject</code></th></tr>
+<tr><td><code>main</code> ブランチへの push</td><td><code>repo:ORG/REPO:ref:refs/heads/main</code></td></tr>
+<tr><td>Pull Request</td><td><code>repo:ORG/REPO:pull_request</code></td></tr>
+<tr><td><strong><code>environment: production</code> を指定したジョブ</strong></td><td><strong><code>repo:ORG/REPO:environment:production</code></strong></td></tr>
+<tr><td>タグ <code>v*</code> の push</td><td><code>repo:ORG/REPO:ref:refs/tags/v1.0.0</code></td></tr></table>
+<div class="callout warn"><strong>⚠️ 最頻出のエラー:</strong> ジョブに <code>environment:</code> を付けた瞬間、<code>sub</code> クレームは <code>ref:refs/heads/main</code> ではなく <code>environment:production</code> に<strong>変わります</strong>。ブランチ用の Federated Credential しか登録していないと <code>AADSTS70021: No matching federated identity record found</code> で失敗します。<strong>承認ゲートを付けるなら environment 用の資格情報を必ず追加してください。</strong>1 アプリにつき最大 20 件まで登録できます。</div>
+
+<h4>GitHub Secrets に入れる 3 つの値（いずれも機密ではない）</h4>
+<pre>AZURE_CLIENT_ID       <span class="cmt"># アプリケーション (クライアント) ID</span>
+AZURE_TENANT_ID       <span class="cmt"># ディレクトリ (テナント) ID</span>
+AZURE_SUBSCRIPTION_ID <span class="cmt"># サブスクリプション ID</span>
+
+<span class="cmt"># ★ AZURE_CLIENT_SECRET は不要 — これが OIDC の要点</span></pre>
+<pre><span class="cmt"># ワークフロー側での有効化</span>
+<span class="kw">permissions</span>:
+  id-token: write     <span class="cmt"># ← これが無いと OIDC トークンを取得できない</span>
+  contents: read
+
+<span class="kw">env</span>:
+  ARM_USE_OIDC: <span class="kw">true</span>          <span class="cmt"># AzureRM Provider に OIDC を使わせる</span>
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}</pre>
+
+<h4>権限は最小限に</h4>
+<div class="callout warn"><strong>⚠️ サブスクリプション スコープの <code>Contributor</code> は避けてください。</strong> 実運用では ① リソースグループ スコープに限定、② <code>Owner</code> は付けない（RBAC 付与が必要な場合のみ <code>User Access Administrator</code> を別途）、③ 本番と検証で<strong>別のアプリ登録</strong>を使う、の 3 点を徹底します。OIDC はシークレットを無くしますが、<strong>権限過多の問題は解決しません</strong>。</div>
+
+<h3>6.3 ワークフロー全体設計</h3>
+<pre>PR 作成
+  │
+  ├─▶ [Job 1] validate  ── fmt / validate / tflint / checkov / conftest
+  │        │ 失敗したら以降を実行しない（早期失敗）
+  │        ▼
+  ├─▶ [Job 2] plan      ── OIDC ログイン → plan -out=tfplan
+  │        │              → artifact に保存
+  │        │              → PR に結果をコメント（sticky）
+  │        ▼
+  │     👤 レビュー・承認（branch protection）
+  │
+merge to main
+  │
+  └─▶ [Job 3] apply     ── environment: production（承認ゲート）
+                          → artifact の tfplan を取得
+                          → apply tfplan  ★再 plan しない</pre>
+<div class="callout"><strong>なぜ artifact で <code>tfplan</code> を渡すのか:</strong> apply 時に再度 <code>plan</code> を実行すると、その間に他の変更が入っていた場合<strong>レビューした内容と違うものが適用されます</strong>。レビュー済みの plan ファイルをそのまま適用することで、「承認した内容 = 適用された内容」を保証できます。</div>
+
+<h4>★ <code>concurrency</code> — state ロック競合を防ぐ</h4>
+<p>2 つの PR がほぼ同時に merge されると、2 つの apply が同じ state を奪い合い、片方が <code>Error acquiring the state lock</code> で失敗します。<strong>ワークフロー側で直列化</strong>するのが正解です。</p>
+<pre><span class="kw">concurrency</span>:
+  <span class="cmt"># state ファイル単位でグループ化（環境ごとに直列実行）</span>
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: <span class="kw">false</span>   <span class="cmt"># ★ apply 中断は state 破損の原因。必ず false</span></pre>
+<div class="callout warn"><strong>⚠️ <code>cancel-in-progress: true</code> は絶対に使わないでください。</strong> <code>terraform apply</code> の途中でジョブが強制終了されると、Azure 上にリソースは作られたのに state に記録されない「孤児リソース」が発生し、次回 <code>apply</code> が名前重複で失敗します。plan だけのジョブなら <code>true</code> でも構いません。</div>
+
+<h4>★ Terraform 本体のバージョンを CI と手元で揃える</h4>
+<p>見落とされがちですが、<strong>ランナーの Terraform バージョンを固定しない / 手元と違う</strong>と「手元では通るのに CI で落ちる」が発生します。</p>
+<pre><span class="kw">env</span>:
+  TF_VERSION: <span class="str">"1.15.8"</span>   <span class="cmt"># ★ 手元と同じ値を明示的に固定</span>
+
+<span class="kw">steps</span>:
+  - <span class="kw">uses</span>: hashicorp/setup-terraform@v3
+    <span class="kw">with</span>:
+      terraform_version: ${{ env.TF_VERSION }}
+      terraform_wrapper: <span class="kw">false</span>   <span class="cmt"># outputs を素で取りたい場合</span></pre>
+<div class="callout warn"><strong>⚠️ これも本資料の作成中に実際に踏みました:</strong> 手元の Terraform は 1.15.8、CI は <code>1.9.0</code> を指定していました。AVM VNet 0.19.0 の <code>ipam_pools</code> の <code>validation</code> は <code>var.ipam_pools == null || length(var.ipam_pools) &gt;= 1</code> という式ですが、<strong>古い Terraform は <code>||</code> を短絡評価しない</strong>ため <code>length(null)</code> が評価されて <code>Invalid function argument</code> で落ちました。<br><br>手元では 1 度も再現せず、<strong>GitHub Actions の初回実行で初めて発覚</strong>しています。<code>required_version = "&gt;= 1.9"</code> のような下限だけの指定では防げません。<strong>CI 側で実バージョンを固定し、手元と一致させてください。</strong></div>
+
+<h3>6.4 実務で効くテクニック</h3>
+<h4>PR コメントを毎回増やさない（sticky comment）</h4>
+<p>素朴に <code>createComment</code> すると push のたびにコメントが積み上がります。既存コメントを探して<strong>更新</strong>します。</p>
+<pre>- <span class="kw">name</span>: Comment Plan on PR
+  <span class="kw">uses</span>: actions/github-script@v7
+  <span class="kw">with</span>:
+    script: |
+      const marker = '&lt;!-- terraform-plan --&gt;';
+      const body = `${marker}
+      #### Terraform Plan 📋 \`${{ steps.plan.outcome }}\`
+      &lt;details&gt;&lt;summary&gt;結果を展開&lt;/summary&gt;
+
+      \`\`\`terraform
+      ${process.env.PLAN}
+      \`\`\`
+      &lt;/details&gt;
+
+      *Commit: ${{ github.sha }} / Actor: @${{ github.actor }}*`;
+
+      const { data: comments } = await github.rest.issues.listComments({
+        issue_number: context.issue.number,
+        owner: context.repo.owner, repo: context.repo.repo,
+      });
+      const existing = comments.find(c =&gt; c.body.includes(marker));
+
+      if (existing) {
+        await github.rest.issues.updateComment({
+          comment_id: existing.id, owner: context.repo.owner,
+          repo: context.repo.repo, body });
+      } else {
+        await github.rest.issues.createComment({
+          issue_number: context.issue.number, owner: context.repo.owner,
+          repo: context.repo.repo, body });
+      }</pre>
+<div class="callout warn"><strong>⚠️ <code>steps.plan.outputs.stdout</code> を直接テンプレートに埋めない:</strong> plan 出力にバッククォートや <code>${</code> が含まれると <strong>JavaScript の文字列展開が壊れます</strong>（スクリプトインジェクションの経路にもなります）。<code>env:</code> 経由で <code>process.env.PLAN</code> として渡すのが安全です。また GitHub のコメントは <strong>65,536 文字上限</strong>があるため、大きな plan は切り詰めが必要です。</div>
+
+<h4>差分の有無で分岐する — <code>-detailed-exitcode</code></h4>
+<table><tr><th>終了コード</th><th>意味</th></tr>
+<tr><td><code>0</code></td><td>差分なし（＝何もする必要がない）</td></tr>
+<tr><td><code>1</code></td><td>エラー</td></tr>
+<tr><td><code>2</code></td><td><strong>差分あり</strong>（ドリフト検知はこれを使う）</td></tr></table>
+
+<h4>実行時間を短縮する</h4>
+<pre>- <span class="kw">uses</span>: actions/cache@v4
+  <span class="kw">with</span>:
+    path: |
+      .terraform
+      ~/.terraform.d/plugin-cache
+    key: tf-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}</pre>
+<div class="callout tip"><strong>💡 <code>.terraform.lock.hcl</code> は必ず Git にコミットしてください。</strong> Provider のバージョンとハッシュを固定するファイルです。コミットしないと CI と手元で別バージョンが使われ、「手元では動くのに CI で落ちる」の温床になります。AVM を使う場合は特に重要です。</div>
+
+<h3>6.5 ★ 再利用可能ワークフロー — 案件横断で標準化する</h3>
+<p>SIer のように<strong>案件ごとにリポジトリが増える</strong>モデルでは、ここが最大の投資対効果になります。パイプライン本体を中央リポジトリに 1 つ置き、各案件は <strong>10 行程度</strong>呼び出すだけにします。</p>
+<pre><span class="cmt"># 中央リポジトリ: contoso-org/iac-workflows</span>
+<span class="cmt">#   .github/workflows/reusable-terraform.yml</span>
+<span class="kw">on</span>:
+  <span class="kw">workflow_call</span>:
+    <span class="kw">inputs</span>:
+      working-directory: { type: string, required: <span class="kw">true</span> }
+      environment:       { type: string, required: <span class="kw">true</span> }
+      terraform-version: { type: string, default: <span class="str">"1.15.8"</span> }
+      apply:             { type: boolean, default: <span class="kw">false</span> }
+    <span class="kw">secrets</span>:
+      AZURE_CLIENT_ID:       { required: <span class="kw">true</span> }
+      AZURE_TENANT_ID:       { required: <span class="kw">true</span> }
+      AZURE_SUBSCRIPTION_ID: { required: <span class="kw">true</span> }</pre>
+<pre><span class="cmt"># 各案件リポジトリ: これだけ書けば標準パイプラインが適用される</span>
+<span class="kw">jobs</span>:
+  terraform:
+    <span class="kw">uses</span>: contoso-org/iac-workflows/.github/workflows/reusable-terraform.yml@v1.4.0
+    <span class="kw">with</span>:
+      working-directory: ./infra
+      environment: production
+      apply: ${{ github.ref == 'refs/heads/main' }}
+    <span class="kw">secrets</span>: inherit</pre>
+<div class="callout tip"><strong>💡 効果:</strong> セキュリティスキャンの追加、Terraform のバージョン更新、新しいポリシーの適用が<strong>中央の 1 回の変更で全案件に反映</strong>されます。<code>@v1.4.0</code> のようにタグ固定すれば、案件ごとに追従タイミングを制御することも可能です。AVM のラッパーモジュール層（第 2 章）と全く同じ構造です。</div>
+
+<h4>複数環境・複数顧客への展開 — matrix</h4>
+<pre><span class="kw">jobs</span>:
+  plan:
+    <span class="kw">strategy</span>:
+      fail-fast: <span class="kw">false</span>       <span class="cmt"># 1 つ失敗しても他を止めない</span>
+      max-parallel: 3
+      <span class="kw">matrix</span>:
+        <span class="kw">include</span>:
+          - { customer: contoso, env: dev }
+          - { customer: contoso, env: prod }
+          - { customer: fabrikam, env: prod }
+    <span class="kw">uses</span>: contoso-org/iac-workflows/.github/workflows/reusable-terraform.yml@v1.4.0
+    <span class="kw">with</span>:
+      working-directory: ./customers/${{ matrix.customer }}
+      environment: ${{ matrix.env }}</pre>
+
+<h3>6.6 セキュリティ強化</h3>
+<table><tr><th>対策</th><th>内容</th></tr>
+<tr><td><strong>Action を SHA で固定</strong></td><td><code>uses: actions/checkout@08c6903</code>（タグは書き換え可能。サプライチェーン攻撃対策）</td></tr>
+<tr><td><strong><code>permissions</code> の最小化</strong></td><td>リポジトリ既定を read-only にし、ジョブ単位で必要な権限だけ付与</td></tr>
+<tr><td><strong>Environment 保護ルール</strong></td><td>必須レビュアー / 待機時間 / デプロイ可能ブランチの制限</td></tr>
+<tr><td><strong>branch protection + CODEOWNERS</strong></td><td><code>*.tf</code> の変更に基盤チームのレビューを必須化</td></tr>
+<tr><td><strong>Dependabot</strong></td><td><code>package-ecosystem: github-actions</code> で Action の更新を自動 PR</td></tr>
+<tr><td><strong><code>pull_request_target</code> を使わない</strong></td><td>フォークからの PR でシークレットが漏れる典型的な脆弱性パターン</td></tr></table>
+<div class="callout warn"><strong>⚠️ <code>plan</code> 出力に機微情報が出ることがあります。</strong> <code>sensitive</code> 指定した値は <code>(sensitive value)</code> と表示されますが、<strong>指定漏れがあると PR コメントに平文で出ます</strong>。パブリックリポジトリでは特に危険です。<code>terraform show -json</code> でのマスキング処理、またはプライベートリポジトリ運用を前提にしてください。</div>
+
+<h3>6.7 Policy as Code とコスト可視化</h3>
+<pre><span class="cmt"># plan を JSON 化して OPA/conftest でポリシー検査</span>
+terraform show -json tfplan &gt; tfplan.json
+conftest test tfplan.json --policy policy/</pre>
+<pre><span class="cmt"># policy/tags.rego — 全リソースに必須タグを強制</span>
+package main
+
+required := {<span class="str">"environment"</span>, <span class="str">"costCenter"</span>, <span class="str">"owner"</span>}
+
+deny[msg] {
+  r := input.resource_changes[_]
+  r.change.actions[_] == <span class="str">"create"</span>
+  missing := required - {k | r.change.after.tags[k]}
+  count(missing) &gt; 0
+  msg := sprintf(<span class="str">"%s にタグ %v がありません"</span>, [r.address, missing])
+}</pre>
+<div class="callout tip"><strong>💡 Azure Policy との使い分け:</strong> <code>conftest</code> は <strong>apply 前（シフトレフト）</strong>に PR 上で止められるのが利点です。Azure Policy は <strong>どんな経路で作られたリソースにも効く</strong>（ポータル手動作成含む）のが利点です。<strong>両方使うのが正解</strong>で、どちらか一方では守り切れません。</div>
+<p>コスト差分の可視化には <strong>Infracost</strong> を組み込み、PR コメントに月額の増減を表示できます。「この PR で月 +¥45,000」が見えると、レビューの質が変わります。</p>
+
+<h3>6.8 実運用で必要になる追加要素</h3>
+<table><tr><th>要件</th><th>対応方法</th></tr>
+<tr><td>プライベートモジュールの参照</td><td><code>TF_TOKEN_app_terraform_io</code>、または <code>git config --global url.insteadOf</code> で PAT を注入</td></tr>
+<tr><td>Private Endpoint 環境への接続</td><td><strong>self-hosted runner</strong>（Azure VM / Container Apps）を VNet 内に配置</td></tr>
+<tr><td>state 用 Storage がネットワーク制限下</td><td>self-hosted runner、または runner の IP を一時的に許可</td></tr>
+<tr><td>複数サブスクリプションへの展開</td><td>環境ごとに Federated Credential + Environment を分離</td></tr>
+</table>
+
+<h3>6.9 ドリフト検知</h3>
+<p><code>cron</code> スケジュールで <code>terraform plan -detailed-exitcode</code> を定期実行し、終了コード <code>2</code>（差分あり）のときに GitHub Issue を自動起票します。Azure Portal からの手動変更を検出する仕組みです。</p>
+<div class="callout warn"><strong>⚠️ 実務上の注意:</strong> ドリフト検知は<strong>誤検知（ノイズ）との戦い</strong>になります。Azure 側が自動付与するタグ、AKS のノードリソースグループ、自動スケール結果などで常時差分が出ることがあります。<code>lifecycle { ignore_changes = [...] }</code> で意図的な差分を除外しないと、Issue が量産されて誰も見なくなります。</div>
+
+<h3>6.10 よくあるハマりどころ 早見表</h3>
+<table><tr><th>症状</th><th>原因と対処</th></tr>
+<tr><td><code>AADSTS70021: No matching federated identity record</code></td><td><code>subject</code> の不一致。<code>environment:</code> 追加時は専用の資格情報が必要（6.2 参照）</td></tr>
+<tr><td><code>Error acquiring the state lock</code></td><td><code>concurrency</code> 未設定で同時実行。直列化する（6.3 参照）</td></tr>
+<tr><td><code>Error: Backend initialization required</code></td><td>backend 設定変更後に <code>-reconfigure</code> または <code>-migrate-state</code> が必要</td></tr>
+<tr><td>plan は成功するが apply で失敗</td><td>権限不足（RBAC 付与には <code>User Access Administrator</code> が別途必要なケース）</td></tr>
+<tr><td>手元と CI で plan 結果が違う</td><td><code>.terraform.lock.hcl</code> 未コミット、または Terraform バージョン差異</td></tr>
+<tr><td>PR コメントが投稿されない</td><td><code>pull-requests: write</code> 権限不足。fork からの PR では既定で付与されない</td></tr>
+</table>
+</section>
+
+<section id="demo03"><h2>7. Demo 03: GitHub Actions 実演 ★（20 分）</h2>
+<p><strong>ディレクトリ:</strong> <code>day2/03-cicd/</code></p>
+
+<h3>7.1 ファイル構成</h3>
+<pre>day2/03-cicd/
+├── .github/workflows/
+│   ├── terraform.yml              <span class="cmt"># メイン: Plan on PR / Apply on merge</span>
+│   ├── drift-detection.yml        <span class="cmt"># 定期ドリフト検知</span>
+│   ├── reusable-terraform.yml     <span class="cmt"># ★ 再利用可能ワークフロー（中央標準）</span>
+│   └── caller-example.yml         <span class="cmt"># ★ 呼び出し側の例（matrix 展開）</span>
+├── scripts/
+│   ├── setup-oidc.sh              <span class="cmt"># ★ OIDC 一括セットアップ (bash)</span>
+│   ├── setup-oidc.ps1             <span class="cmt"># ★ OIDC 一括セットアップ (PowerShell)</span>
+│   └── teardown-oidc.sh           <span class="cmt"># ★ 後片付け</span>
+├── policy/
+│   ├── tags.rego                  <span class="cmt"># ★ 必須タグポリシー</span>
+│   └── security.rego              <span class="cmt"># ★ パブリックアクセス禁止ポリシー</span>
+├── .tflint.hcl                    <span class="cmt"># ★ TFLint 設定 (azurerm ruleset)</span>
+├── azure-pipelines.yml            <span class="cmt"># Azure DevOps 版（参考）</span>
+└── README.md</pre>
+
+<h3>7.2 事前準備 — OIDC セットアップ（講師が事前実行済み）</h3>
+<p>スクリプト 1 本でアプリ登録・SP 作成・RBAC 付与・Federated Credential 4 件の登録まで完了します。</p>
+<pre>cd day2/03-cicd/scripts
+
+<span class="cmt"># PowerShell (Windows)</span>
+./setup-oidc.ps1 -GitHubOrg <span class="str">"contoso-org"</span> -GitHubRepo <span class="str">"avm-workshop"</span> `
+                 -SubscriptionId <span class="str">"&lt;SUB_ID&gt;"</span> -ResourceGroupName <span class="str">"rg-avm-cicd-demo"</span>
+
+<span class="cmt"># bash (Linux / macOS / WSL / Cloud Shell)</span>
+./setup-oidc.sh --org contoso-org --repo avm-workshop \
+                --subscription <span class="str">"&lt;SUB_ID&gt;"</span> --resource-group rg-avm-cicd-demo</pre>
+<p>実行後、出力された 3 つの値を GitHub Secrets に登録します（<code>gh</code> CLI があればスクリプトが自動登録します）。</p>
+
+<h3>7.3 実演シナリオ（ライブデモ）</h3>
+<table><tr><th>#</th><th>操作</th><th>見せるポイント</th><th>分</th></tr>
+<tr><td>1</td><td>Entra ID の Federated Credential を Portal で表示</td><td><strong>シークレットが 1 つも無い</strong>こと。subject 4 種類の違い</td><td>2</td></tr>
+<tr><td>2</td><td>ブランチを切り、<code>main.tf</code> のタグを 1 つ削除して PR 作成</td><td>PR = 変更申請書</td><td>2</td></tr>
+<tr><td>3</td><td>Actions タブで <code>validate</code> ジョブを見る</td><td>fmt / tflint / checkov / conftest が走る様子</td><td>3</td></tr>
+<tr style="background:#e8f7ee"><td>4</td><td><strong>conftest が必須タグ欠如で落ちる</strong></td><td><strong>Policy as Code が apply 前に止める</strong>（最大の見せ場）</td><td>3</td></tr>
+<tr><td>5</td><td>タグを戻して再 push</td><td>sticky コメントが<strong>増えずに更新</strong>される</td><td>1</td></tr>
+<tr><td>6</td><td>PR コメントの plan 結果を展開</td><td><code>&lt;details&gt;</code> 折りたたみ、差分の読み方</td><td>2</td></tr>
+<tr style="background:#e8f7ee"><td>7</td><td>merge → <code>apply</code> ジョブが承認待ちで停止</td><td><strong>Environment 保護ルールによる承認ゲート</strong></td><td>3</td></tr>
+<tr><td>8</td><td>承認 → apply 実行</td><td>artifact の tfplan をそのまま適用（再 plan しない）</td><td>3</td></tr>
+<tr><td>9</td><td>ドリフト検知ワークフローを一瞬だけ紹介</td><td>Issue が自動起票される（詳細は <a href="#appendix">付録 E</a>）</td><td>1</td></tr></table>
+
+<h3>7.4 時間が無い場合の短縮版</h3>
+<div class="callout tip"><strong>💡 最低限これだけは見せる:</strong> 上表の<strong>緑の 2 行</strong> — ④ conftest が PR を止める瞬間 と ⑦ 承認ゲート です。この 2 点が「なぜ CI/CD が必要か」を最も雄弁に説明します。①③⑨ は実行済みの過去 Run を開いて見せれば 1 分で済みます。<br><strong>逆に余裕があれば</strong>、OIDC の設定手順を <a href="#appendix">付録 D</a> として 11:30 以降に実演できます。</div>
+
+<h3>7.5 Azure DevOps 版との対応</h3>
+<table><tr><th>GitHub Actions</th><th>Azure DevOps</th></tr>
+<tr><td><code>permissions: id-token: write</code></td><td>Workload Identity Federation のサービス接続</td></tr>
+<tr><td><code>environment:</code> + 保護ルール</td><td>Environments + 承認チェック</td></tr>
+<tr><td><code>concurrency</code></td><td>パイプラインの排他ロック</td></tr>
+<tr><td><code>workflow_call</code>（再利用ワークフロー）</td><td>テンプレート（<code>extends</code> / <code>template</code>）</td></tr>
+<tr><td><code>actions/upload-artifact</code></td><td><code>publish</code> / <code>download</code></td></tr>
+</table>
+<p>考え方は同一です。<code>azure-pipelines.yml</code> に同等構成を用意しているので、既存 ADO 資産がある案件でもそのまま応用できます。</p>
+</section>
+
+<section id="avm-deep"><h2>8. AVM Deep Dive</h2>
+<h3>一貫インターフェース詳細</h3>
+<p>すべての AVM モジュールが以下の共通インターフェースを提供。<strong>どのリソースでも同じ構文</strong>で設定可能:</p>
+<table><tr><th>インターフェース</th><th>用途</th><th>構文例</th></tr>
+<tr><td><code>tags</code></td><td>共通タグ</td><td><code>tags = { env = "prod" }</code></td></tr>
+<tr><td><code>lock</code></td><td>リソースロック</td><td><code>lock = { kind = "CanNotDelete" }</code></td></tr>
+<tr><td><code>role_assignments</code></td><td>RBAC</td><td><code>role_assignments = { admin = { ... } }</code></td></tr>
+<tr><td><code>diagnostic_settings</code></td><td>診断設定</td><td><code>diagnostic_settings = { to_law = { ... } }</code></td></tr>
+<tr><td><code>managed_identities</code></td><td>Managed ID</td><td>SystemAssigned / UserAssigned</td></tr>
+<tr><td><code>private_endpoints</code></td><td>PE</td><td>VNet 内プライベート接続</td></tr>
+<tr><td><code>customer_managed_key</code></td><td>CMK</td><td>Key Vault 管理キー</td></tr></table>
+<h3>セマンティックバージョニングと version 固定 ★重要★</h3>
+<p>AVM モジュールの<strong>大半はまだ 1.0 未満</strong>です。1.0 未満のモジュールでは、Terraform の <code>~&gt;</code>（悲観的制約）の挙動が直感と異なるため、事故が起きやすい箇所です。</p>
+<table><tr><th>書き方</th><th>実際に許容される範囲</th><th>評価</th></tr>
+<tr><td><code>version = "~&gt; 0.7"</code></td><td><code>&gt;= 0.7.0, &lt; 1.0.0</code> → <strong>0.19 でも 0.99 でも上がる</strong></td><td>❌ 危険</td></tr>
+<tr><td><code>version = "~&gt; 0.7.0"</code></td><td><code>&gt;= 0.7.0, &lt; 0.8.0</code> → パッチのみ</td><td>✅ 推奨</td></tr>
+<tr><td><code>version = "= 0.19.0"</code></td><td>完全固定</td><td>✅ 本番・顧客納品</td></tr>
+<tr><td><code>version = "~&gt; 4.2"</code></td><td>1.0 以上なら <code>&gt;= 4.2, &lt; 5.0</code> でマイナーまで許容</td><td>✅ provider 向け</td></tr></table>
+<div class="callout warn"><strong>⚠️ 実際にこの資料の作成中に踏んだ罠:</strong> 本ワークショップのデモコードは当初 <code>version = "~&gt; 0.7"</code> と書いていました。「0.7 系に固定した」つもりでしたが、<code>~&gt;</code> を<strong>2 桁</strong>で書くと <code>&lt; 1.0</code> の意味になるため、<code>terraform init</code> が最新の <strong>0.19.0</strong> を取得しました。0.8 以降で <code>resource_group_name</code> が <code>parent_id</code> に置き換わっていたため、<code>init</code> の時点で <code>Error: Unsupported argument</code> となりデモが動きませんでした。<br><br><strong>教訓:</strong> 1.0 未満のモジュールは <code>~&gt; 0.19.<u>0</u></code> のように<strong>3 桁</strong>で書く。顧客納品物では <code>= 0.19.0</code> の完全固定を推奨します。</div>
+<pre><span class="cmt"># 1.0 未満の AVM モジュール（＝ほとんど）</span>
+<span class="kw">version</span> = <span class="str">"~&gt; 0.19.0"</span>   <span class="cmt"># ✅ 0.19.x のみ（パッチ許容）</span>
+<span class="kw">version</span> = <span class="str">"= 0.19.0"</span>    <span class="cmt"># ✅ 完全固定（顧客納品）</span>
+<span class="kw">version</span> = <span class="str">"~&gt; 0.19"</span>     <span class="cmt"># ❌ 0.99 まで上がる = 破壊的変更を拾う</span>
+
+<span class="cmt"># provider（1.0 以上）</span>
+<span class="kw">version</span> = <span class="str">"~&gt; 4.2"</span>      <span class="cmt"># ✅ 4.x のマイナー更新は許容</span></pre>
+<div class="callout"><strong>💡 さらに強い保証: <code>.terraform.lock.hcl</code></strong><br>provider の正確なバージョンとハッシュを記録するロックファイルです。<strong>必ず Git にコミット</strong>してください（<code>.gitignore</code> に入れてはいけません）。CI では <code>terraform init -lockfile=readonly</code> を使うと、ロックファイルに無い provider が入ってきた時点で失敗させられます。<br>※ ロックファイルは <strong>provider のみ</strong>で、モジュールのバージョンは記録されません。モジュールは <code>version</code> 制約で固定するしかない点に注意してください。</div>
+<h3>破壊的変更への備え（顧客納品を前提に）</h3>
+<ol>
+<li><strong>バージョンを上げるのは意図的な作業</strong> — <code>terraform init -upgrade</code> は「更新したいとき」だけ実行する</li>
+<li><strong>更新は必ず PR 経由</strong> — Dependabot / Renovate でバージョン更新 PR を自動生成し、CI の <code>plan</code> で差分を確認してからマージ</li>
+<li><strong>CHANGELOG を読む</strong> — AVM は GitHub リポジトリでリリースノートを公開。<code>BREAKING CHANGE</code> の記載を確認</li>
+<li><strong>ラッパーモジュールで吸収</strong> — 自社ラッパー層で AVM を包んでおけば、AVM 側の引数名変更を<strong>ラッパー内 1 箇所</strong>の修正で全案件に反映できる</li>
+</ol>
+
+<h3>モジュールの 3 分類（Resource / Pattern / Utility）</h3>
+<table><tr><th>分類</th><th>命名規則</th><th>説明</th></tr>
+<tr><td><strong>Resource</strong></td><td><code>avm-res-*</code></td><td>単一リソースを WAF ベストプラクティスでデプロイ。共通インターフェース（RBAC、ロック、PE、診断設定等）を統合。外部依存は作成しない。</td></tr>
+<tr><td><strong>Pattern</strong></td><td><code>avm-ptn-*</code></td><td>複数リソース（多くは Resource Module を内部利用）をまとめてデプロイ。非 AVM モジュールの参照は禁止。</td></tr>
+<tr><td><strong>Utility</strong> <em>(プレビュー)</em></td><td><code>avm-utl-*</code></td><td>リソースやパターンモジュールで再利用可能な関数・ルーチンを提供。Azure リソースは直接デプロイしない。</td></tr></table>
+<div class="callout"><strong>ポイント:</strong> Utility Module はプレビュー段階ですが、共通ヘルパー（API エンドポイント取得等）をモジュール間で共有する用途です。今後、定義が成熟するにつれて拡充予定。</div>
+
+<h3>AVM の品質強制メカニズム</h3>
+<p>AVM が信頼される理由は、品質を「仕組み」として強制している点です:</p>
+<ol>
+<li><strong>公開レジストリ</strong> — Terraform Registry / Bicep Registry に公開し、透明性を確保</li>
+<li><strong>仕様の策定・公開</strong> — 言語共通 + 言語固有の仕様を公式サイトで維持</li>
+<li><strong>貢献ガイドライン</strong> — モジュールの開発・公開手順を文書化</li>
+<li><strong>Unit / Integration テスト</strong> — AVM 仕様への準拠を自動検証</li>
+<li><strong>E2E デプロイテスト</strong> — Example が実際にデプロイできることを検証</li>
+<li><strong>長期サポート</strong> — AVM コアチーム + Microsoft CSS + Azure PG が連携</li>
+</ol>
+</section>
+
+<section id="popular"><h2>9. よく使われる AVM モジュール</h2>
+<h3>Resource Modules (avm-res-*)</h3>
+<table><tr><th>カテゴリ</th><th>モジュール</th><th>用途</th></tr>
+<tr><td>コンピュート</td><td>avm-res-compute-virtualmachine</td><td>VM</td></tr>
+<tr><td>コンピュート</td><td>avm-res-containerservice-managedcluster</td><td>AKS</td></tr>
+<tr><td>コンピュート</td><td>avm-res-web-site</td><td>App Service / Functions</td></tr>
+<tr><td>コンピュート</td><td>avm-res-databricks-workspace</td><td>Databricks</td></tr>
+<tr><td>ネットワーク</td><td>avm-res-network-virtualnetwork</td><td>VNet</td></tr>
+<tr><td>ネットワーク</td><td>avm-res-network-networksecuritygroup</td><td>NSG</td></tr>
+<tr><td>ネットワーク</td><td>avm-res-network-applicationgateway</td><td>App GW / WAF</td></tr>
+<tr><td>ストレージ</td><td>avm-res-storage-storageaccount</td><td>Storage</td></tr>
+<tr><td>データベース</td><td>avm-res-sql-server</td><td>Azure SQL</td></tr>
+<tr><td>セキュリティ</td><td>avm-res-keyvault-vault</td><td>Key Vault</td></tr></table>
+<h3>Pattern Modules (avm-ptn-*)</h3>
+<table><tr><th>モジュール</th><th>用途</th></tr>
+<tr><td>avm-ptn-alz</td><td>Azure Landing Zone</td></tr>
+<tr><td>avm-ptn-hubnetworking</td><td>Hub-Spoke ネットワーク</td></tr>
+<tr><td>avm-ptn-virtualwan</td><td>Virtual WAN</td></tr></table>
+<div class="callout"><strong>社内標準化のおすすめステップ:</strong> VNet + NSG + Storage + Key Vault で基盤テンプレートを作成 → AKS を使う場合は version 固定で導入 → Pattern Module で Landing Zone を標準化</div>
+</section>
+
+<section id="params"><h2>10. パラメータ受け渡しの再設計 — Excel 納品の「次の一手」</h2>
+<div class="callout"><strong>Session 1 でのご質問（補足いただいた内容）:</strong> 「エンドユーザー様へパッケージを納品する際、<strong>パラメータ定義を Excel で出力してお渡ししている</strong>。他にもっと<strong>信頼できる方法</strong>はないか？」</div>
+
+<h3>10.1 まず現状の確認 — 方向性は既に正しいです</h3>
+<p>「Excel を<strong>出力（納品物）</strong>として使う」というのは、実は<strong>推奨される形そのもの</strong>です。よくある失敗は逆に、Excel を<strong>入力</strong>にして人手で <code>.tfvars</code> に転記してしまうパターンで、こちらは転記ミス・二重管理・監査証跡の弱さを一気に抱え込みます。</p>
+<table><tr><th></th><th>よくある失敗パターン</th><th>本ワークショップで想定する現状</th></tr>
+<tr><td>Excel の位置づけ</td><td>入力・作業ファイル</td><td><strong>出力（納品物）</strong> ✅</td></tr>
+<tr><td>正 (Single Source of Truth)</td><td>Excel</td><td>コード側 ✅</td></tr>
+<tr><td>フロー</td><td>Excel →（手転記）→ tfvars → apply</td><td>コード → apply → Excel ✅</td></tr></table>
+<div class="callout tip"><strong>💡 したがって論点は「Excel をやめるか」ではありません。</strong> 本当の論点は <strong>「その納品物が、実際に適用された構成と一致していることを、どうやって<u>証明</u>するか」</strong>です。信頼性はファイル形式ではなく<strong>生成と検証の仕組み</strong>から生まれます。以下ではまず評価軸を決め、その上で選択肢を比較します。</div>
+
+<h3>10.2 「信頼できる」を 6 つの評価軸に分解する</h3>
+<p>「信頼できる方法」を漠然と探すと比較ができません。まず何を満たせば信頼できるのかを定義します。</p>
+<table><tr><th>#</th><th>評価軸</th><th>満たせていないと起きること</th></tr>
+<tr><td>1</td><td><strong>機械検証</strong>（型・必須・値域）</td><td><code>10.0.0.0/6</code> のような誤値が <code>apply</code> まで発見されない</td></tr>
+<tr><td>2</td><td><strong>差分レビュー</strong>（Git で diff できる）</td><td>変更点が目視確認となり、レビューが形骸化する</td></tr>
+<tr><td>3</td><td><strong>自動生成</strong>（人手を介さない）</td><td>転記ミス。コードと納品物が徐々に乖離する</td></tr>
+<tr><td>4</td><td><strong>トレーサビリティ</strong>（どのコードから生成されたか）</td><td>「この Excel はいつ時点のものか」が誰にも答えられない</td></tr>
+<tr><td>5</td><td><strong>改ざん検知</strong>（手編集を検出できる）</td><td>納品後に誰かが Excel を直接編集し、実環境と食い違う</td></tr>
+<tr><td>6</td><td><strong>非エンジニア可読性</strong></td><td>エンドユーザー様の情シス／監査部門が読めない</td></tr></table>
+<div class="callout"><strong>ポイント:</strong> Excel は <strong>6（可読性）に非常に強く、2（差分）に非常に弱い</strong>形式です。一方 YAML/Markdown は 2 に強く 6 に弱い。<strong>どちらか一方を選ぶ必要はありません</strong> — 正をコードに置き、そこから複数形式を生成すれば、両方の長所を取れます。</div>
+
+<h3 id="params-compare">10.3 選択肢の比較</h3>
+<p>評価軸（10.2）× 各方式のマトリクスです。◎=強い / ○=可 / △=条件付き / ×=不可</p>
+<table>
+<tr><th>方式</th><th>①機械<br>検証</th><th>②差分<br>レビュー</th><th>③自動<br>生成</th><th>④トレー<br>サビリティ</th><th>⑤改ざん<br>検知</th><th>⑥非エンジニア<br>可読性</th><th>位置づけ</th></tr>
+<tr><td>Excel（手作業でメンテ）</td><td>×</td><td>×</td><td>×</td><td>×</td><td>×</td><td>◎</td><td>避けたい形</td></tr>
+<tr style="background:#eaf4ff"><td><strong>Excel（コードから自動生成）</strong></td><td>△</td><td>×</td><td>◎</td><td>△</td><td>×</td><td>◎</td><td><strong>← 現状</strong></td></tr>
+<tr style="background:#e8f7ee"><td><strong>Excel 自動生成 + 刻印 + CI 再生成検証</strong></td><td>◎</td><td>△</td><td>◎</td><td>◎</td><td>◎</td><td>◎</td><td><strong>★ 推奨（10.5）</strong></td></tr>
+<tr><td>YAML + JSON Schema</td><td>◎</td><td>◎</td><td>—</td><td>◎</td><td>◎</td><td>○</td><td>入力側の正</td></tr>
+<tr><td><code>.tfvars</code> + <code>validation</code></td><td>◎</td><td>◎</td><td>—</td><td>◎</td><td>◎</td><td>△</td><td>IaC 担当者がいる場合</td></tr>
+<tr><td>terraform-docs → Markdown</td><td>—</td><td>◎</td><td>◎</td><td>◎</td><td>◎</td><td>○</td><td>変数仕様書として併用</td></tr>
+<tr><td>Markdown → PDF（署名付き）</td><td>—</td><td>△</td><td>◎</td><td>◎</td><td>◎</td><td>◎</td><td>契約書類向け</td></tr>
+<tr><td><code>terraform show -json</code>（適用実績）</td><td>◎</td><td>○</td><td>◎</td><td>◎</td><td>◎</td><td>×</td><td>監査エビデンス</td></tr>
+<tr><td>Azure Deployment Environments</td><td>◎</td><td>○</td><td>◎</td><td>◎</td><td>◎</td><td>◎</td><td>セルフサービス化（10.7）</td></tr>
+<tr><td>Azure Managed Application</td><td>◎</td><td>△</td><td>◎</td><td>◎</td><td>◎</td><td>◎</td><td>コード非開示納品（10.7）</td></tr>
+</table>
+<div class="callout tip"><strong>💡 この表の読み方:</strong> 現状（青行）から推奨形（緑行）への差分は、<strong>ファイル形式の変更ではなく「刻印」と「CI での再生成検証」を足すだけ</strong>です。既存の納品プロセス・契約書類の様式を変えずに、①④⑤を一気に埋められます。実装コストが最も小さく効果が大きい順路です。</div>
+
+
+<h3 id="params-steps">10.4 入力側を固める — 生成元の品質がそのまま納品物の品質になる</h3>
+<p>納品 Excel を自動生成している以上、<strong>その信頼性は「生成元のパラメータがどれだけ検証されているか」で上限が決まります</strong>。検証されていない値から生成された美しい Excel は、誤値を美しく印刷しているだけです。</p>
+
+<h4>Step 1: そもそも「埋める項目」を減らす（最も効果が大きい）</h4>
+<p>AVM のセキュア既定値をそのまま活かし、<code>optional()</code> でデフォルトを持たせます。パラメータ 200 項目 → <strong>10 項目</strong>にできれば、Excel かどうかは大きな問題ではなくなります。</p>
+<pre><span class="kw">variable</span> <span class="str">"workload"</span> {
+  <span class="kw">description</span> = <span class="str">"エンドユーザー様に入力いただく項目はこれだけ"</span>
+  <span class="kw">type</span> = object({
+    name        = string                              <span class="cmt"># 必須</span>
+    environment = string                              <span class="cmt"># 必須</span>
+    location    = optional(string, <span class="str">"japaneast"</span>)      <span class="cmt"># 以下は既定値あり</span>
+    sku         = optional(string, <span class="str">"Standard"</span>)
+    enable_private_endpoint = optional(bool, <span class="kw">true</span>)  <span class="cmt"># WAF 既定値</span>
+    retention_days          = optional(number, 90)
+  })
+
+  <span class="kw">validation</span> {
+    <span class="kw">condition</span>     = contains([<span class="str">"dev"</span>, <span class="str">"stg"</span>, <span class="str">"prod"</span>], var.workload.environment)
+    <span class="kw">error_message</span> = <span class="str">"environment は dev / stg / prod のいずれかを指定してください。"</span>
+  }
+  <span class="kw">validation</span> {
+    <span class="kw">condition</span>     = can(regex(<span class="str">"^[a-z0-9]{3,20}$"</span>, var.workload.name))
+    <span class="kw">error_message</span> = <span class="str">"name は英小文字と数字のみ、3〜20 文字で指定してください。"</span>
+  }
+}</pre>
+<div class="callout"><strong>Excel の「入力規則」に相当する機能が Terraform 側にあります。</strong> <code>validation</code> ブロック（条件 + 日本語エラーメッセージ）、<code>type</code> による型強制、<code>sensitive = true</code>、リソース側の <code>lifecycle { precondition }</code>。これらは <code>plan</code> の時点で検証されるため、<strong>本番適用前に必ず止まります</strong>。</div>
+
+<h4>Step 2: パラメータを YAML に外出しし、スキーマで検証する</h4>
+<p>「コードは触らせたくない／触りたくない」という要件に対する現実解です。Excel と同じく<strong>コードとパラメータを分離</strong>しつつ、Git で差分が見え、CI で検証できます。</p>
+<pre><span class="cmt"># params/contoso-prod.yaml — エンドユーザー様が編集するのはこのファイルのみ</span>
+environment: prod
+location: japaneast
+
+network:
+  vnet_name: vnet-contoso-prod
+  address_space: [<span class="str">"10.0.0.0/16"</span>]
+  subnets:
+    web: { name: snet-web, address_prefixes: [<span class="str">"10.0.1.0/24"</span>] }
+    app: { name: snet-app, address_prefixes: [<span class="str">"10.0.2.0/24"</span>] }
+
+tags:
+  costCenter: <span class="str">"1234"</span>
+  owner: <span class="str">"infra@contoso.co.jp"</span></pre>
+<pre><span class="cmt"># main.tf — YAML を読み込んで AVM モジュールに渡す</span>
+<span class="kw">locals</span> {
+  p = yamldecode(file(<span class="str">"${path.module}/params/${var.customer}.yaml"</span>))
+}
+
+<span class="kw">module</span> <span class="str">"vnet"</span> {
+  <span class="kw">source</span>  = <span class="str">"Azure/avm-res-network-virtualnetwork/azurerm"</span>
+  <span class="kw">version</span> = <span class="str">"~&gt; 0.19.0"</span>
+
+  name          = local.p.network.vnet_name
+  address_space = local.p.network.address_space
+  subnets       = local.p.network.subnets
+  location      = local.p.location
+  parent_id     = azurerm_resource_group.this.id
+  tags          = local.p.tags
+}</pre>
+<p><strong>JSON Schema による検証</strong>（＝ Excel の入力規則・プルダウンに相当）を CI に組み込みます:</p>
+<pre><span class="cmt"># .github/workflows/terraform.yml</span>
+- name: <span class="str">"パラメータファイルのスキーマ検証"</span>
+  run: |
+    pip install check-jsonschema
+    check-jsonschema --schemafile schema/params.schema.json params/*.yaml
+
+- name: <span class="str">"ポリシー検証 (Policy as Code)"</span>
+  run: conftest test params/ --policy policy/</pre>
+<div class="callout tip"><strong>💡 エンドユーザー様の編集体験:</strong> <code>params.schema.json</code> を用意し YAML 先頭に <code># yaml-language-server: $schema=...</code> を書くと、<strong>VS Code 上で入力補完・プルダウン・リアルタイムのエラー表示</strong>が効きます。Excel の入力規則と同等以上の UX が、Git 管理下で実現できます。</div>
+
+<h4>Step 3: 納品用 Excel は「自動生成」する</h4>
+<pre><span class="cmt"># CI の納品パイプラインで実行（人手を介さない）</span>
+terraform plan -out=tfplan
+terraform show -json tfplan &gt; plan.json
+
+python tools/gen_param_sheet.py \
+  --params  params/contoso-prod.yaml \
+  --schema  schema/params.schema.json \
+  --plan    plan.json \
+  --output  <span class="str">"納品物/パラメータシート_contoso_prod_v1.2.0.xlsx"</span>
+
+terraform-docs markdown . &gt; docs/parameters.md   <span class="cmt"># 変数一覧の自動生成</span></pre>
+<p>スキーマから項目名・型・既定値・説明を、plan/state から実際の適用値を取得して生成します。<strong>コードと納品書類が構造的に一致</strong>し、乖離しません。</p>
+
+<h3 id="params-trust">10.5 ★本命★ 納品物を「検証可能」にする 3 つの仕掛け</h3>
+<p>ここが今回のご質問に対する中心的な回答です。<strong>形式を変えずに</strong>、評価軸 ①④⑤（機械検証・トレーサビリティ・改ざん検知）を埋めます。</p>
+
+<h4>仕掛け ①：納品物に「刻印」する（トレーサビリティ）</h4>
+<p>生成した Excel の先頭に<strong>「メタ情報」シート</strong>を必ず 1 枚追加します。これだけで「この Excel はいつ・どのコードから生成されたのか」に即答できるようになります。</p>
+<table><tr><th>項目</th><th>値の例</th><th>なぜ必要か</th></tr>
+<tr><td>生成日時 (UTC)</td><td><code>2026-07-29T02:15:33Z</code></td><td>いつ時点の情報かの特定</td></tr>
+<tr><td><strong>Git コミットハッシュ</strong></td><td><code>7a3f2d3</code></td><td><strong>納品物 → コードの逆引き</strong></td></tr>
+<tr><td>リリースタグ</td><td><code>v1.2.0</code></td><td>契約・請求単位との紐付け</td></tr>
+<tr><td>Terraform バージョン</td><td><code>1.15.8</code></td><td>再現性の担保</td></tr>
+<tr><td>AVM モジュールとバージョン</td><td><code>avm-res-network-virtualnetwork 0.19.0</code></td><td>依存の明示（SBOM 相当）</td></tr>
+<tr><td>パラメータファイルの SHA-256</td><td><code>9f2a…</code></td><td>入力値の同一性証明</td></tr>
+<tr><td>CI 実行 URL</td><td><code>https://github.com/…/runs/123</code></td><td>生成が人手でないことの証明</td></tr></table>
+<div class="callout tip"><strong>💡 ISMS / P マーク観点:</strong> この 1 シートが、監査時の「この設定書はどのように作成され、正しさをどう担保していますか？」という問いへの回答そのものになります。口頭説明ではなく<strong>成果物自体が証跡</strong>になる点が重要です。</div>
+
+<h4>仕掛け ②：CI で「再生成して差分ゼロ」を検証する（改ざん検知）</h4>
+<p>納品物が<strong>手編集されていないこと</strong>を機械的に証明します。CI でもう一度生成し、コミット済みのものと一致するか検証します。</p>
+<div class="callout warn"><strong>⚠️ 技術的な注意 — <code>.xlsx</code> をバイト比較してはいけません。</strong> xlsx は ZIP 圧縮されたバイナリで、内部に<strong>生成日時のタイムスタンプ</strong>を含みます。同じ内容でも生成のたびにバイト列が変わるため、単純な <code>diff</code> や <code>git diff --exit-code</code> は<strong>必ず失敗</strong>します。<strong>正規化したテキスト中間表現を経由</strong>してください。</div>
+<pre><span class="cmt"># 生成物は「正規化 JSON」と「xlsx」の 2 つ。Git に置くのは正規化 JSON。</span>
+<span class="cmt"># xlsx は正規化 JSON から決定的に生成される派生物という位置づけにする。</span>
+
+- <span class="kw">name</span>: <span class="str">"パラメータシートを再生成"</span>
+  <span class="kw">run</span>: |
+    python tools/gen_param_sheet.py \
+      --params params/contoso-prod.yaml \
+      --schema schema/params.schema.json \
+      --format json \
+      --output dist/contoso-prod.normalized.json
+
+- <span class="kw">name</span>: <span class="str">"手編集されていないことを検証"</span>
+  <span class="kw">run</span>: |
+    <span class="cmt"># 差分があれば = 誰かが成果物を直接編集した = ビルド失敗</span>
+    git diff --exit-code dist/contoso-prod.normalized.json \
+      || { echo <span class="str">"::error::納品物が手編集されています。パラメータ側を修正してください"</span>; exit 1; }</pre>
+
+<h4>仕掛け ③：「適用実績」を併せて納品する（実態との一致証明）</h4>
+<p>パラメータシートは<strong>「こう設定するつもり」</strong>の文書です。これに対し <code>terraform show -json</code> は<strong>「実際にこうなっている」</strong>という実態です。両者を突き合わせて初めて「一致している」と言えます。</p>
+<pre>terraform show -json tfplan &gt; dist/plan.json          <span class="cmt"># 適用予定</span>
+terraform show -json &gt; dist/state.json                <span class="cmt"># 適用実績（apply 後）</span>
+
+<span class="cmt"># 納品セットに同梱し、SHA-256 を納品書に記載</span>
+sha256sum dist/*.json dist/*.xlsx &gt; dist/SHA256SUMS.txt</pre>
+<div class="callout"><strong>まとめ:</strong> ①②③ を入れると、納品物は「Excel ファイル」から <strong>「コミットハッシュに紐づく、再生成可能で改ざん検知付きの成果物」</strong>に変わります。<strong>エンドユーザー様に渡す<u>見た目</u>は今までと全く同じまま</strong>、信頼性だけが上がります。既存の契約様式・承認フローを変更する必要がありません。</div>
+
+<h3 id="params-formats">10.6 Excel 以外の納品形式（併用のすすめ）</h3>
+<p>Excel を置き換えるのではなく、<strong>同じ正から複数形式を生成して併記</strong>するのが最も費用対効果の高い形です。読み手ごとに最適な形式が違うためです。</p>
+<table><tr><th>形式</th><th>生成方法</th><th>主な読み手</th><th>強み</th></tr>
+<tr><td><strong>Excel</strong>（現状）</td><td><code>openpyxl</code></td><td>エンドユーザー様の情シス・監査</td><td>契約様式に合う／誰でも開ける</td></tr>
+<tr><td><strong>Markdown</strong>（変数仕様書）</td><td><code>terraform-docs markdown .</code></td><td>エンドユーザー様の技術担当</td><td>Git で差分が見える／PR でレビュー可</td></tr>
+<tr><td><strong>PDF</strong></td><td>Markdown → <code>pandoc</code></td><td>契約・法務</td><td>改変不可／署名・押印に載せやすい</td></tr>
+<tr><td><strong>静的サイト</strong></td><td>MkDocs / GitHub Pages</td><td>運用フェーズの全員</td><td>常に最新／検索できる</td></tr>
+<tr><td><strong>JSON</strong></td><td><code>terraform show -json</code></td><td>機械（監視・CMDB 連携）</td><td>他システムに取り込める</td></tr></table>
+<div class="callout tip"><strong>💡 最小の一歩:</strong> <code>terraform-docs</code> の導入は<strong>設定ファイル 1 個 + CI 1 ステップ</strong>で完了します。<code>variable</code> の <code>description</code> がそのまま仕様書になるため、「description を書く」という規律にも繋がります（10.4 の <code>tflint</code> ルール <code>terraform_documented_variables</code> と組み合わせると強制できます）。まずここから着手されることをお勧めします。</div>
+
+<h3>10.7 さらに踏み込む場合 — セルフサービス化</h3>
+<h4>Azure Deployment Environments (ADE)</h4>
+<p>SIer が<strong>カタログ（＝承認済み IaC テンプレート集）</strong>を提供し、エンドユーザー様は<strong>フォーム入力だけ</strong>で環境を払い出せます。パラメータファイルの受け渡し自体が不要になります。</p>
+<div class="callout warn"><strong>⚠️ 前提条件:</strong> ADE が<strong>標準で対応しているのは ARM / Bicep のみ</strong>です。Terraform を使うには「拡張性モデル（extensibility model）」による<strong>カスタムコンテナイメージの作成と ACR への登録が必須</strong>です（Pulumi も同様）。導入コストを見積もる際はこのランナーイメージの作成・保守を忘れないでください。<br><a href="https://learn.microsoft.com/azure/deployment-environments/concept-extensibility-model">拡張性モデルの概要</a> ｜ <a href="https://learn.microsoft.com/azure/deployment-environments/how-to-configure-extensibility-model-custom-image">カスタムイメージの作成手順</a></div>
+<pre><span class="cmt"># environment.yaml — このパラメータ定義がそのままフォーム UI になる</span>
+name: SecureLandingZone
+version: 1.0.0
+summary: <span class="str">"自社標準セキュアランディングゾーン (AVM ベース)"</span>
+runner: <span class="str">"&lt;ACR&gt;/terraform-runner:1.0"</span>   <span class="cmt"># Terraform は拡張性モデル（カスタムイメージ）で対応</span>
+templatePath: main.tf
+
+parameters:
+  - id: workloadName
+    name: <span class="str">"ワークロード名"</span>
+    type: string
+    required: <span class="kw">true</span>
+  - id: environment
+    name: <span class="str">"環境"</span>
+    type: string
+    required: <span class="kw">true</span>
+    allowed: [dev, stg, prod]        <span class="cmt"># ← Excel のプルダウンに相当</span>
+    default: dev
+  - id: enablePrivateEndpoint
+    name: <span class="str">"Private Endpoint を有効化"</span>
+    type: boolean
+    default: <span class="kw">true</span></pre>
+<h4>Azure Managed Application</h4>
+<p>コードを開示せずに納品したい場合の選択肢です。<code>createUiDefinition.json</code> により Azure ポータル上に<strong>正式な入力フォーム</strong>（バリデーション・Azure API 連動のプルダウン付き）が描画されます。運用を SIer 側に残す（マネージド提供）モデルにも対応できます。<em>※ ARM/Bicep ベースのため、Terraform 資産とは併用構成が必要です。</em></p>
+
+<h3 id="params-excel">10.8 逆方向 — エンドユーザー様から Excel で提出される場合</h3>
+<p>納品は Excel 出力でも、<strong>要件ヒアリング時にはエンドユーザー様から Excel で値をいただく</strong>ケースは残ります。この向き（Excel → コード）だけは転記ミスのリスクがあるため、<strong>一方通行の自動変換を CI に載せます</strong>:</p>
+<ol>
+<li>Excel は<strong>受付フォーム</strong>と割り切り、リポジトリにコミット</li>
+<li>CI で <code>xlsx → YAML</code> に自動変換（<code>openpyxl</code> / <code>pandas</code>）— <strong>手転記を廃止</strong></li>
+<li>変換後の YAML を JSON Schema で検証 → 失敗したら PR をブロック</li>
+<li>YAML を Git にコミット → <strong>差分がレビュー可能に</strong></li>
+<li>生成された <code>.tfvars</code> / YAML の<strong>手編集は禁止</strong>（CI でチェック）</li>
+</ol>
+<div class="callout warn"><strong>⚠️ 必ず守るルール:</strong> 変換は<strong>必ず一方向</strong>にしてください。Excel とコードの双方向編集を許すと、どちらが正か分からなくなり、現状より状況が悪化します。</div>
+
+<h3>10.9 SI 事業モデルへの適用イメージ</h3>
+<table><tr><th>レイヤー</th><th>内容</th><th>管理者</th><th>変更頻度</th></tr>
+<tr><td>AVM モジュール</td><td>Microsoft 提供・version 固定</td><td>Microsoft</td><td>低</td></tr>
+<tr><td><strong>自社標準ラッパーモジュール</strong></td><td>AVM をラップした自社標準（命名規則・タグ・セキュリティ基準）</td><td><strong>SIer 様</strong></td><td>中</td></tr>
+<tr><td>顧客別パラメータ (YAML)</td><td>案件ごとに 10〜20 項目のみ</td><td>案件チーム / エンドユーザー様</td><td>高</td></tr>
+<tr><td>納品パラメータシート (xlsx)</td><td>CI で自動生成</td><td>—（生成物）</td><td>—</td></tr></table>
+<div class="callout tip"><strong>💡 自社開発標準との接続:</strong> 中央のラッパーモジュール層こそが「自社開発標準」そのものです。自社の開発基盤にコーディング規約やレビュー基準を組み込んでいるのと同じ思想を、Azure インフラ側に適用する形になります。案件が増えるほどラッパー層の投資対効果が高まり、ISMS / P マークの観点でも「Git 履歴 = 変更証跡」「PR 承認 = 変更管理記録」「CI の checkov 結果 = セキュリティ検証記録」として、監査対応の工数削減にも直結します。</div>
+</section>
+
+<section id="demo07"><h2>11. Demo 07: YAML パラメータ &amp; Excel 自動生成</h2>
+<p><code>day2/07-parameters/</code> — Session 1 のご質問「納品時にパラメータ Excel を同梱している。他に信頼できる方法はあるか」への実装例です。<strong>Excel 出力はそのままに、「刻印」と「手編集検知」を追加しています（10.5 の実物）。</strong></p>
+
+<h3>11.1 ファイル構成</h3>
+<pre><span class="cmt">07-parameters/</span>
+├── main.tf                       <span class="cmt"># yamldecode でパラメータを読み込む</span>
+├── params/
+│   ├── contoso-prod.yaml         <span class="cmt"># ★ 正 (SSOT)。ここだけを編集する</span>
+│   └── contoso-dev.yaml
+├── schema/
+│   └── params.schema.json        <span class="cmt"># 入力規則（Excel の入力規則に相当）</span>
+├── tools/
+│   └── gen_param_sheet.py        <span class="cmt"># 納品用 Excel + 正規化 JSON の生成</span>
+└── dist/
+    ├── contoso-prod.xlsx         <span class="cmt"># 納品物（.gitignore 対象＝派生物）</span>
+    └── params.normalized.json    <span class="cmt"># ★ コミットする。CI の差分検証の基準</span></pre>
+
+<h3>11.2 デモの流れ（8 分）</h3>
+<table><tr><th>#</th><th>操作</th><th>見せどころ</th><th>分</th></tr>
+<tr><td>①</td><td>VS Code で <code>contoso-prod.yaml</code> を開く</td><td><code>location:</code> と打つと<strong>プルダウンで候補が出る</strong>。<code>costCenter</code> に不正値を入れると<strong>即座に赤波線</strong>。Excel の入力規則と同じ体験が Git 管理下で実現できている</td><td>1</td></tr>
+<tr><td>②</td><td><code>check-jsonschema</code> を実行</td><td>CI で機械的に弾ける。人のレビューに頼らない</td><td>1</td></tr>
+<tr><td>③</td><td><code>enablePrivateEndpoint</code> を <code>false</code> にして <code>plan</code></td><td><code>check</code> ブロックが<strong>日本語のエラーメッセージ</strong>で停止。業務ルールをコードで守る</td><td>1</td></tr>
+<tr><td>④</td><td><code>git diff</code> で dev と prod を比較</td><td><strong>Excel には絶対にできないこと。</strong>環境差分が行単位で見える</td><td>1</td></tr>
+<tr><td>⑤</td><td><code>gen_param_sheet.py</code> を実行して xlsx を開く</td><td>説明文・制約が Schema から自動で入り、リソース一覧が <code>plan</code> から自動で入る</td><td>2</td></tr>
+<tr><td>⑥ ★</td><td><strong>「メタ情報」シートを見せ、その後正規化 JSON を<u>わざと手編集</u>して CI を回す</strong></td><td><strong>最大の見せ場。</strong>メタ情報シートに Git コミット・モジュールバージョン・SHA-256 が刻印されている。そして手編集すると <strong>CI が赤になる</strong> — 「納品物が改ざんされていないこと」が<strong>機械的に証明できる</strong></td><td>2</td></tr></table>
+<div class="callout tip"><strong>💡 ⑥ の語り口:</strong> 「今までは『この Excel は正しいです』と<u>口頭で保証</u>するしかありませんでした。これからは『このコミットから再生成して一致しました』と<u>CI が証明</u>します」</div>
+
+<h3>11.3 コードの核心 — たった 2 行</h3>
+<pre><span class="kw">locals</span> {
+  param_file = <span class="str">"${path.module}/params/${var.customer}-${var.env}.yaml"</span>
+  p          = <span class="fn">yamldecode</span>(<span class="fn">file</span>(local.param_file))
+}
+
+<span class="cmt"># あとは local.p.xxx を AVM モジュールに渡すだけ</span>
+<span class="kw">module</span> <span class="str">"vnet"</span> {
+  source        = <span class="str">"Azure/avm-res-network-virtualnetwork/azurerm"</span>
+  version       = <span class="str">"~&gt; 0.19.0"</span>
+  address_space = local.p.network.addressSpace
+  <span class="cmt">// ...</span>
+}</pre>
+
+<h3>11.4 Schema がドキュメントを兼ねる</h3>
+<pre>{
+  <span class="str">"costCenter"</span>: {
+    <span class="str">"title"</span>: <span class="str">"コストセンター"</span>,
+    <span class="str">"description"</span>: <span class="str">"課金按分用のコードです。経理部門より払い出された値を入力してください。"</span>,
+    <span class="str">"type"</span>: <span class="str">"string"</span>,
+    <span class="str">"pattern"</span>: <span class="str">"^[0-9]{4}-[0-9]{4}$"</span>
+  }
+}</pre>
+<div class="callout tip"><strong>💡 二重管理の解消:</strong> この <code>title</code> / <code>description</code> / <code>pattern</code> が、そのまま <strong>VS Code の入力補完</strong>・<strong>CI の検証</strong>・<strong>納品 Excel の説明列</strong>の 3 つに使われます。Schema を 1 か所直せば、すべてが追従します。従来は「Excel の注釈」「設計書の記載」「実装の検証ロジック」が別々に管理され、必ず食い違っていました。</div>
+
+<h3>11.5 CI への組み込み</h3>
+<pre><span class="kw">- name</span>: パラメータ検証
+  <span class="kw">run</span>: |
+    pip install check-jsonschema
+    check-jsonschema --schemafile schema/params.schema.json params/*.yaml
+
+<span class="kw">- name</span>: 納品パラメータシート生成
+  <span class="kw">if</span>: github.ref == 'refs/heads/main'
+  <span class="kw">run</span>: |
+    python tools/gen_param_sheet.py \
+      --params params/${{ matrix.customer }}-${{ matrix.env }}.yaml \
+      --schema schema/params.schema.json \
+      --plan   tfplan.json \
+      --output dist/${{ matrix.customer }}-${{ matrix.env }}.xlsx
+
+<span class="kw">- uses</span>: actions/upload-artifact@v4
+  <span class="kw">with</span>:
+    <span class="kw">name</span>: parameter-sheets
+    <span class="kw">path</span>: dist/*.xlsx
+
+<span class="cmt">--- ★ ここからが 10.5 の「手編集検知」です ---</span>
+
+<span class="kw">- name</span>: 納品物が手編集されていないことを検証
+  <span class="kw">run</span>: |
+    <span class="cmt"># xlsx は生成日時を含む ZIP バイナリなのでバイト比較できない。</span>
+    <span class="cmt"># 決定的な正規化 JSON を再生成し、コミット済みのものと比較する。</span>
+    python tools/gen_param_sheet.py \
+      --params params/contoso-prod.yaml \
+      --schema schema/params.schema.json \
+      --format json \
+      --output dist/params.normalized.json
+    git diff --exit-code dist/params.normalized.json \
+      || { echo <span class="str">"::error::納品物が直接編集されています。params/ 側を修正して再生成してください"</span>; exit 1; }</pre>
+<div class="callout"><strong>成果:</strong> main にマージされた瞬間、納品用パラメータシートが Actions のアーティファクトとして生成されます。<strong>「デプロイした内容」と「納品したドキュメント」が原理的に一致</strong>し、乖離が発生しません。</div>
+</section>
+
+<section id="summary"><h2>12. まとめ & 次のステップ</h2>
+<table><tr><th>Day</th><th>トピック</th><th>キーポイント</th></tr>
+<tr><td rowspan="3">Day 1</td><td>基礎</td><td>init/plan/apply / lifecycle / 状態ファイル</td></tr>
+<tr><td>変数</td><td>優先順位 / sensitive / object / validation</td></tr>
+<tr><td>AVM 初体験</td><td>Databricks ワークスペースを AVM でデプロイ</td></tr>
+<tr><td rowspan="5">Day 2</td><td>モジュール</td><td>ローカル / Registry / 依存関係</td></tr>
+<tr><td>状態管理</td><td>Azure Blob / ロック / 暗号化</td></tr>
+<tr><td>CI/CD</td><td>OIDC / tflint / checkov / ドリフト検知</td></tr>
+<tr><td>AVM Deep Dive</td><td>一貫インターフェース / マルチティア / version 固定</td></tr>
+<tr><td>パラメータ設計</td><td>納品物に<strong>刻印</strong>し、CI で<strong>再生成して差分ゼロ</strong>を検証 → 「正しさ」を口頭保証から機械証明へ</td></tr></table>
+<h3>🚀 次のステップ</h3>
+<ul>
+<li>AVM モジュールで社内基盤テンプレートを構築</li>
+<li>AVM をラップした<strong>自社標準モジュール層</strong>を整備し、案件横断で再利用</li>
+<li>パラメータの正を Git に移し、納品パラメータシートを CI で自動生成</li>
+<li>CI/CD パイプラインに静的解析 + ドリフト検知を導入</li>
+<li>GitHub Copilot で Terraform コーディングを加速</li>
+<li><a href="https://aka.ms/avm/index">aka.ms/avm/index</a> でモジュールを探す</li>
+</ul></section>
+
+<section id="links"><h2>13. 参照リンク集</h2>
+<table><tr><th>リソース</th><th>URL</th></tr>
+<tr><td>AVM VNet (Registry)</td><td><a href="https://registry.terraform.io/modules/Azure/avm-res-network-virtualnetwork/azurerm/latest">Registry ↗</a></td></tr>
+<tr><td>AVM Key Vault (Registry)</td><td><a href="https://registry.terraform.io/modules/Azure/avm-res-keyvault-vault/azurerm/latest">Registry ↗</a></td></tr>
+<tr><td>AVM NSG (Registry)</td><td><a href="https://registry.terraform.io/modules/Azure/avm-res-network-networksecuritygroup/azurerm/latest">Registry ↗</a></td></tr>
+<tr><td>AVM Databricks (Registry)</td><td><a href="https://registry.terraform.io/modules/Azure/avm-res-databricks-workspace/azurerm/latest">Registry ↗</a></td></tr>
+<tr><td>AVM 公式サイト</td><td><a href="https://aka.ms/AVM">aka.ms/AVM</a></td></tr>
+<tr><td>モジュール索引</td><td><a href="https://aka.ms/avm/index">aka.ms/avm/index</a></td></tr>
+<tr><td>AVM Labs</td><td><a href="https://aka.ms/avm/tf/labs">aka.ms/avm/tf/labs</a></td></tr>
+<tr><td>Terraform on Azure</td><td><a href="https://aka.ms/tf/fundamentals">aka.ms/tf/fundamentals</a></td></tr>
+<tr><td>Terraform Registry (AVM)</td><td><a href="https://registry.terraform.io/search/modules?q=avm">Registry Search ↗</a></td></tr>
+<tr><td>HashiCorp Docs</td><td><a href="https://developer.hashicorp.com/terraform/docs">developer.hashicorp.com ↗</a></td></tr>
+<tr><td>AVM 入門動画 (YouTube)</td><td><a href="https://youtu.be/JbIMrJKW5N0">An Introduction to Azure Verified Modules ↗</a></td></tr>
+<tr><td>AVM モジュール分類</td><td><a href="https://azure.github.io/Azure-Verified-Modules/specs/shared/module-classifications/">Module Classifications ↗</a></td></tr>
+<tr><td>AI アシスト IaC 開発</td><td><a href="https://azure.github.io/Azure-Verified-Modules/experimental/ai-assisted-sol-dev/">AI-Assisted Solution Dev ↗</a></td></tr>
+<tr><td colspan="2"><strong>パラメータ設計（第 10 章）関連</strong></td></tr>
+<tr><td>変数の validation ブロック</td><td><a href="https://developer.hashicorp.com/terraform/language/values/variables#custom-validation-rules">HashiCorp Docs ↗</a></td></tr>
+<tr><td>optional() / 複合型</td><td><a href="https://developer.hashicorp.com/terraform/language/expressions/type-constraints#optional-object-type-attributes">Optional Object Attributes ↗</a></td></tr>
+<tr><td>yamldecode 関数</td><td><a href="https://developer.hashicorp.com/terraform/language/functions/yamldecode">yamldecode ↗</a></td></tr>
+<tr><td>terraform-docs</td><td><a href="https://terraform-docs.io/">terraform-docs.io ↗</a></td></tr>
+<tr><td>ADE: environment.yaml の仕様</td><td><a href="https://learn.microsoft.com/azure/deployment-environments/concept-environment-yaml">Properties and parameters ↗</a></td></tr>
+<tr><td>ADE: Terraform 対応（拡張性モデル）</td><td><a href="https://learn.microsoft.com/azure/deployment-environments/how-to-configure-extensibility-model-custom-image">Custom container image ↗</a></td></tr>
+<tr><td>Azure Managed Applications</td><td><a href="https://learn.microsoft.com/azure/azure-resource-manager/managed-applications/overview">Overview ↗</a></td></tr>
+<tr><td>createUiDefinition.json</td><td><a href="https://learn.microsoft.com/azure/azure-resource-manager/managed-applications/create-uidefinition-overview">UI Definition ↗</a></td></tr>
+<tr><td>Conftest / OPA (Policy as Code)</td><td><a href="https://www.conftest.dev/">conftest.dev ↗</a></td></tr>
+</table>
+</section>
+
+<section id="appendix"><h2>付録: 時間に余裕がある場合の追加デモ</h2>
+<p>以下の 3 デモは<strong>本編（〜11:30）には含めていません</strong>。11:30 以降の質疑応答枠で、ご関心の高いものだけを実演します。いずれも <code>terraform init</code> / <code>validate</code> 済みで、そのまま動作します。</p>
+<table><tr><th>付録</th><th>デモ</th><th>ディレクトリ</th><th>目安</th><th>こんなご質問が出たら</th></tr>
+<tr><td>A</td><td>AVM 参照 (VNet + Key Vault)</td><td><code>day2/04-avm-reference/</code></td><td>4 分</td><td>「AVM モジュールの実際の書き方をもう少し見たい」</td></tr>
+<tr><td>B</td><td>一貫インターフェース実演</td><td><code>day2/05-avm-consistent-interface/</code></td><td>4 分</td><td>「診断設定やロックを全リソースに統一したい」</td></tr>
+<tr><td>C</td><td>マルチティア構成</td><td><code>day2/06-multi-tier-avm/</code></td><td>6 分</td><td>「複数の AVM を組み合わせた実案件規模の例が見たい」</td></tr>
+<tr><td>D</td><td>OIDC フェデレーション設定</td><td><code>day2/03-cicd/scripts/setup-oidc.ps1</code></td><td>6 分</td><td>「シークレットレス認証の設定手順を実際に見たい」</td></tr>
+<tr><td>E</td><td>ドリフト検知ワークフロー</td><td><code>.github/workflows/drift-detection.yml</code></td><td>4 分</td><td>「ポータルで手動変更されたらどう気づくのか」</td></tr></table>
+
+<h3 id="appendix-a">付録 A: AVM 参照 (VNet + Key Vault)</h3>
+<p><strong>ディレクトリ:</strong> <code>day2/04-avm-reference/</code></p>
+<p><strong>モジュール:</strong></p>
+<ul>
+<li><a href="https://registry.terraform.io/modules/Azure/avm-res-network-virtualnetwork/azurerm/latest">Azure/avm-res-network-virtualnetwork/azurerm</a></li>
+<li><a href="https://registry.terraform.io/modules/Azure/avm-res-keyvault-vault/azurerm/latest">Azure/avm-res-keyvault-vault/azurerm</a></li>
+</ul>
+<pre><span class="kw">module</span> <span class="str">"vnet"</span> {
+  <span class="kw">source</span>  = <span class="str">"Azure/avm-res-network-virtualnetwork/azurerm"</span>
+  <span class="kw">version</span> = <span class="str">"~&gt; 0.19.0"</span>  <span class="cmt"># 3 桁で固定（8 章の落とし穴に注意）</span>
+  name          = <span class="str">"vnet-avm-demo"</span>
+  parent_id     = azurerm_resource_group.demo.id  <span class="cmt"># v0.8 以降 resource_group_name → parent_id</span>
+  location      = azurerm_resource_group.demo.location
+  address_space = [<span class="str">"10.0.0.0/16"</span>]
+  subnets = {
+    web = { name = <span class="str">"snet-web"</span>, address_prefixes = [<span class="str">"10.0.1.0/24"</span>] }
+    app = { name = <span class="str">"snet-app"</span>, address_prefixes = [<span class="str">"10.0.2.0/24"</span>] }
+  }
+  tags = { environment = <span class="str">"demo"</span> }
+}</pre>
+<pre>cd day2/04-avm-reference
+terraform init &amp;&amp; terraform plan &amp;&amp; terraform apply -auto-approve
+terraform state list   <span class="cmt"># module.vnet / module.keyvault</span>
+terraform destroy -auto-approve</pre>
+
+<h3 id="appendix-b">付録 B: 一貫インターフェース実演</h3>
+<p><strong>ディレクトリ:</strong> <code>day2/05-avm-consistent-interface/</code></p>
+<p>Key Vault に<strong>一貫インターフェース</strong>を適用: <code>tags</code> / <code>lock</code> / <code>role_assignments</code> / <code>diagnostic_settings</code> / <code>enable_telemetry</code></p>
+<pre>cd day2/05-avm-consistent-interface
+terraform init &amp;&amp; terraform plan   <span class="cmt"># plan 出力を解説</span>
+<span class="cmt"># 時間があれば apply、なければ plan 解説のみ</span>
+terraform destroy -auto-approve</pre>
+<div class="callout tip"><strong>💡 <code>enable_telemetry</code> について:</strong> AVM は既定で匿名の利用統計（デプロイ数のみ。リソース名や値は送信されません）を収集します。セキュリティ要件の厳しいエンドユーザー様には <code>enable_telemetry = false</code> で明示的に無効化できる点を、あらかじめ提示できると安心材料になります。</div>
+
+<h3 id="appendix-c">付録 C: マルチティア構成</h3>
+<p><strong>ディレクトリ:</strong> <code>day2/06-multi-tier-avm/</code></p>
+<p><strong>構成:</strong> VNet → NSG → Key Vault → Log Analytics — 全て AVM モジュール</p>
+<p><strong>モジュール:</strong></p>
+<ul>
+<li><a href="https://registry.terraform.io/modules/Azure/avm-res-network-virtualnetwork/azurerm/latest">avm-res-network-virtualnetwork</a></li>
+<li><a href="https://registry.terraform.io/modules/Azure/avm-res-keyvault-vault/azurerm/latest">avm-res-keyvault-vault</a></li>
+<li><a href="https://registry.terraform.io/modules/Azure/avm-res-network-networksecuritygroup/azurerm/latest">avm-res-network-networksecuritygroup</a></li>
+</ul>
+<pre>cd day2/06-multi-tier-avm
+terraform init     <span class="cmt"># 3 つの AVM モジュールをダウンロード</span>
+terraform plan     <span class="cmt"># 全リソースのプレビュー</span>
+terraform apply -auto-approve
+terraform output   <span class="cmt"># architecture_summary</span>
+<span class="cmt"># Azure Portal でリソース確認（時間あれば）</span>
+terraform destroy -auto-approve</pre>
+<div class="callout tip"><strong>💡 ポイント:</strong> 全モジュールに同じ <code>diagnostic_settings</code> / <code>tags</code> を適用。WAF セキュア既定値（NSG Deny All / Key Vault RBAC）が自動設定される。</div>
+</section>
+</div>
+</body>
+</html>

@@ -1,0 +1,35 @@
+# =============================================================================
+# 改行コードの正規化
+# =============================================================================
+# Windows で clone しても、シェルスクリプトや Terraform ファイルが
+# CRLF にならないようにします。
+#
+# ★ .sh が CRLF になると Linux / Azure Cloud Shell で
+#   「bad interpreter: /bin/bash^M」というエラーで動きません。
+# =============================================================================
+
+# 既定: テキストは自動判定し、リポジトリ内では LF で保存
+* text=auto eol=lf
+
+# 必ず LF（Linux ランナー / Cloud Shell で実行するもの）
+*.sh        text eol=lf
+*.tf        text eol=lf
+*.hcl       text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.rego      text eol=lf
+*.json      text eol=lf
+*.py        text eol=lf
+*.md        text eol=lf
+
+# Windows で実行するものは CRLF のまま
+*.ps1       text eol=crlf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+
+# バイナリ（差分を取らない）
+*.png       binary
+*.jpg       binary
+*.gif       binary
+*.pdf       binary
+*.xlsx      binary

@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=../schema/params.schema.json
+# =============================================================================
+# 顧客パラメータ — Contoso 本番環境
+# =============================================================================
+# ★ エンドユーザー様が編集するのはこのファイルだけです。
+#
+# VS Code で開くと、上記の $schema 指定により
+#   - 入力補完
+#   - プルダウン（許可値の候補表示）
+#   - リアルタイムのエラー表示
+# が有効になります（Excel の入力規則と同等以上）。
+# =============================================================================
+
+location: japaneast
+
+# 課金・運用に必須の情報
+costCenter: "1234-5678"
+owner: "infra@contoso.co.jp"
+
+# 本番環境では true が必須（main.tf の check ブロックで検証）
+enablePrivateEndpoint: true
+
+retentionDays: 90
+
+network:
+  addressSpace:
+    - "10.0.0.0/16"
+
+  subnets:
+    web:
+      name: snet-web
+      addressPrefixes: ["10.0.1.0/24"]
+    app:
+      name: snet-app
+      addressPrefixes: ["10.0.2.0/24"]
+    db:
+      name: snet-db
+      addressPrefixes: ["10.0.3.0/24"]
+
+additionalTags:
+  system: "受発注システム"
+  contractId: "CT-2026-0042"

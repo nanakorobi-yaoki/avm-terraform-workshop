@@ -1,0 +1,42 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfstate.*.backup
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+generated.tf
+
+# 実値を含む変数ファイルはコミットしない
+# （本ワークショップの day1/02 の terraform.tfvars は教材のため意図的に追跡しています）
+*.auto.tfvars
+*.auto.tfvars.json
+secrets*.tfvars
+*.tfvars.local
+
+# 注意: .terraform.lock.hcl は **必ずコミット** してください（無視しません）。
+#       プロバイダのバージョンとハッシュを固定し、CI と手元の環境差異を防ぎます。
+
+# 生成物
+dist/*
+*.xlsx
+
+# ただし「再生成して差分ゼロ」検証（改ざん検知）に使う正規化 JSON は、
+# CI が比較する基準そのものなので必ずコミットします。
+# ※ 親ディレクトリを "dist/" と書くと配下を再包含できないため "dist/*" にしています。
+!dist/*.normalized.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

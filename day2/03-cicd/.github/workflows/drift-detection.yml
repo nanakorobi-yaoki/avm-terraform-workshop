@@ -1,0 +1,73 @@
+# ===========================================
+# GitHub Actions — Terraform ドリフト検知
+# ===========================================
+# 定期スケジュールで terraform plan を実行し、
+# Azure Portal からの手動変更（ドリフト）を検知。
+# 差分があれば GitHub Issue を自動起票する。
+# ===========================================
+name: "Terraform Drift Detection"
+
+on:
+  schedule:
+    # 毎日 21:00 UTC (日本時間 AM 6:00)
+    - cron: "0 21 * * *"
+  workflow_dispatch: # 手動実行も可能
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+
+env:
+  TF_VERSION: "1.15.8"
+  WORKING_DIR: "."
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_USE_OIDC: true
+
+jobs:
+  drift-check:
+    name: "Check for Drift"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.WORKING_DIR }}
+
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: |
+          terraform plan -detailed-exitcode -no-color 2>&1 | tee plan_output.txt
+          echo "exitcode=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        working-directory: ${{ env.WORKING_DIR }}
+        continue-on-error: true
+
+      # exit code 2 = 差分あり（ドリフト検知）
+      - name: Create Issue on Drift
+        if: steps.plan.outputs.exitcode == '2'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('plan_output.txt', 'utf8').slice(-3000);
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '⚠️ Terraform Drift Detected',
+              body: `## ドリフト検知\n\nScheduled plan で差分が検出されました。\nAzure Portal からの手動変更がある可能性があります。\n\n\`\`\`\n${planOutput}\n\`\`\`\n\n**対応**: 手動変更を Terraform に反映するか、\`terraform apply\` で上書きしてください。`,
+              labels: ['drift', 'infrastructure']
+            });

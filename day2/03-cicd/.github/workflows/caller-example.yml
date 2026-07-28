@@ -1,0 +1,56 @@
+# =============================================================================
+# 呼び出し側の例 — 各案件リポジトリにはこれだけを置く
+# =============================================================================
+# 中央リポジトリの再利用可能ワークフローを呼び出します。
+# パイプラインのロジックは一切書きません。
+#
+# 効果:
+#   - セキュリティスキャンの追加、Terraform バージョン更新、
+#     ポリシー変更が「中央の 1 回の変更」で全案件に反映される
+#   - @v1.4.0 のタグ固定により、案件ごとに追従タイミングを制御できる
+# =============================================================================
+name: "Terraform"
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["infra/**", ".github/workflows/**"]
+  push:
+    branches: [main]
+    paths: ["infra/**"]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # パターン A: 単一環境
+  # ---------------------------------------------------------------------------
+  terraform:
+    uses: contoso-org/iac-workflows/.github/workflows/reusable-terraform.yml@v1.4.0
+    with:
+      working-directory: ./infra
+      environment: production
+      backend-key: contoso/production.tfstate
+      backend-storage-account: stststerraformstate001
+      apply: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+    secrets: inherit
+
+  # ---------------------------------------------------------------------------
+  # パターン B: 複数顧客 × 複数環境へ matrix 展開
+  #   ※ 上の terraform ジョブとは排他。実際にはどちらか一方を使う
+  # ---------------------------------------------------------------------------
+  # terraform-matrix:
+  #   strategy:
+  #     fail-fast: false      # 1 つ失敗しても他の案件を止めない
+  #     max-parallel: 3       # 同時実行数を制限（API スロットリング対策）
+  #     matrix:
+  #       include:
+  #         - { customer: contoso,  env: dev,        apply: true  }
+  #         - { customer: contoso,  env: production, apply: false }
+  #         - { customer: fabrikam, env: production, apply: false }
+  #   uses: contoso-org/iac-workflows/.github/workflows/reusable-terraform.yml@v1.4.0
+  #   with:
+  #     working-directory: ./customers/${{ matrix.customer }}
+  #     environment: ${{ matrix.env }}
+  #     backend-key: ${{ matrix.customer }}/${{ matrix.env }}.tfstate
+  #     backend-storage-account: stststerraformstate001
+  #     apply: ${{ matrix.apply && github.ref == 'refs/heads/main' }}
+  #   secrets: inherit

@@ -1,0 +1,332 @@
+# =============================================================================
+# 再利用可能ワークフロー — Terraform 標準パイプライン
+# =============================================================================
+# 中央リポジトリ (例: contoso-org/iac-workflows) に配置し、
+# 各案件リポジトリから workflow_call で呼び出します。
+#
+# 呼び出し例は caller-example.yml を参照してください。
+#
+# ★ このファイルを 1 か所直すだけで、全案件のパイプラインが更新されます。
+# =============================================================================
+name: "Reusable Terraform Pipeline"
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Terraform ルートディレクトリ"
+        type: string
+        required: true
+      environment:
+        description: "GitHub Environment 名 (承認ゲート用)"
+        type: string
+        required: true
+      terraform-version:
+        description: "Terraform のバージョン"
+        type: string
+        default: "1.15.8"
+      apply:
+        description: "true で apply まで実行する"
+        type: boolean
+        default: false
+      backend-key:
+        description: "state ファイルのキー (例: contoso/prod.tfstate)"
+        type: string
+        required: true
+      backend-storage-account:
+        description: "state 用 Storage Account 名"
+        type: string
+        required: true
+      backend-resource-group:
+        description: "state 用リソースグループ名"
+        type: string
+        default: "rg-terraform-state"
+      policy-enforcement:
+        description: "conftest / checkov を fail させるか (false = 警告のみ)"
+        type: boolean
+        default: true
+    secrets:
+      AZURE_CLIENT_ID:
+        required: true
+      AZURE_TENANT_ID:
+        required: true
+      AZURE_SUBSCRIPTION_ID:
+        required: true
+
+# ---------------------------------------------------------------------------
+# 既定の権限は最小限。ジョブ単位で必要なものだけ追加する
+# ---------------------------------------------------------------------------
+permissions: {}
+
+# ---------------------------------------------------------------------------
+# ★ state ロック競合を防ぐ直列化
+#    cancel-in-progress は必ず false（apply 中断は state 破損の原因）
+# ---------------------------------------------------------------------------
+concurrency:
+  group: terraform-${{ inputs.backend-key }}
+  cancel-in-progress: false
+
+env:
+  ARM_USE_OIDC: true
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  # ===========================================================================
+  # Job 1: 静的解析・セキュリティ・ポリシー検査
+  #        Azure に接続しないため OIDC 不要 = 最速で落とせる
+  # ===========================================================================
+  validate:
+    name: "Validate / Lint / Security"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: "Format Check"
+        working-directory: ${{ inputs.working-directory }}
+        run: terraform fmt -check -recursive -diff
+
+      - name: "Init (backend なし)"
+        working-directory: ${{ inputs.working-directory }}
+        run: terraform init -backend=false
+
+      - name: "Validate"
+        working-directory: ${{ inputs.working-directory }}
+        run: terraform validate
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: "TFLint"
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          tflint --init
+          tflint --recursive --format compact
+
+      - name: "Checkov (セキュリティスキャン)"
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: ${{ inputs.working-directory }}
+          framework: terraform
+          soft_fail: ${{ !inputs.policy-enforcement }}
+          output_format: cli
+
+  # ===========================================================================
+  # Job 2: Plan（Azure 接続あり）
+  # ===========================================================================
+  plan:
+    name: "Plan"
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: plan
+    permissions:
+      id-token: write        # OIDC トークン取得
+      contents: read
+      pull-requests: write   # PR コメント投稿
+    outputs:
+      exitcode: ${{ steps.plan.outputs.exitcode }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false   # 生の終了コードを取得するため
+
+      # Provider バイナリのキャッシュで実行時間を短縮
+      - uses: actions/cache@v4
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: tf-plugins-${{ runner.os }}-${{ hashFiles(format('{0}/.terraform.lock.hcl', inputs.working-directory)) }}
+          restore-keys: tf-plugins-${{ runner.os }}-
+
+      - name: "Azure Login (OIDC)"
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: "Init (部分バックエンド設定)"
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          mkdir -p ~/.terraform.d/plugin-cache
+          terraform init \
+            -backend-config="resource_group_name=${{ inputs.backend-resource-group }}" \
+            -backend-config="storage_account_name=${{ inputs.backend-storage-account }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=${{ inputs.backend-key }}"
+        env:
+          TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache
+
+      - name: "Plan"
+        id: plan
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          set +e
+          terraform plan -detailed-exitcode -no-color -out=tfplan > plan_output.txt 2>&1
+          code=$?
+          set -e
+          echo "exitcode=${code}" >> "$GITHUB_OUTPUT"
+          cat plan_output.txt
+          # 0=差分なし / 2=差分あり は正常。1 のみ失敗扱い
+          [ "$code" -eq 1 ] && exit 1 || exit 0
+
+      - name: "Policy as Code (conftest)"
+        if: hashFiles('policy/*.rego') != ''
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          curl -sSL https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz \
+            | tar xz -C /tmp conftest
+          terraform show -json tfplan > tfplan.json
+          /tmp/conftest test tfplan.json --policy "$GITHUB_WORKSPACE/policy" \
+            ${{ inputs.policy-enforcement && ' ' || '--no-fail' }}
+
+      - name: "Plan をアーティファクトに保存"
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ inputs.environment }}
+          path: |
+            ${{ inputs.working-directory }}/tfplan
+            ${{ inputs.working-directory }}/plan_output.txt
+          retention-days: 5
+
+      # -----------------------------------------------------------------
+      # PR コメント（sticky: 既存コメントを更新して増やさない）
+      # ★ plan 出力は env 経由で渡す。テンプレートに直接埋めるとバッククォート等で壊れる
+      # -----------------------------------------------------------------
+      - name: "PR にコメント"
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          PLAN_OUTPUT: ${{ steps.plan.outputs.exitcode }}
+          WORKDIR: ${{ inputs.working-directory }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = `<!-- tf-plan:${{ inputs.backend-key }} -->`;
+
+            let plan = '';
+            try {
+              plan = fs.readFileSync(`${process.env.WORKDIR}/plan_output.txt`, 'utf8');
+            } catch (e) {
+              plan = '(plan 出力を読み取れませんでした)';
+            }
+
+            // GitHub のコメント上限は 65536 文字。余裕を持って切り詰める
+            const MAX = 55000;
+            if (plan.length > MAX) {
+              plan = plan.slice(0, MAX) + '\n\n... (出力が長いため省略。全文は Actions のログを参照)';
+            }
+
+            const code = process.env.PLAN_OUTPUT;
+            const status = code === '0' ? '✅ 差分なし'
+                         : code === '2' ? '📋 差分あり'
+                         : '❌ エラー';
+
+            const body = `${marker}
+            ### Terraform Plan — \`${{ inputs.backend-key }}\`
+
+            **結果:** ${status}
+
+            <details><summary>plan 結果を展開</summary>
+
+            \`\`\`terraform
+            ${plan}
+            \`\`\`
+
+            </details>
+
+            <sub>Commit \`${{ github.sha }}\` / Actor @${{ github.actor }} / Env \`${{ inputs.environment }}\`</sub>`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                comment_id: existing.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body,
+              });
+            }
+
+  # ===========================================================================
+  # Job 3: Apply
+  #   ★ environment を指定 → JWT の sub は environment:<名前> になる
+  #     対応する Federated Credential が必要（setup-oidc スクリプトが登録済み）
+  # ===========================================================================
+  apply:
+    name: "Apply"
+    needs: plan
+    if: inputs.apply && needs.plan.outputs.exitcode == '2'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}   # ← 承認ゲート
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: "Azure Login (OIDC)"
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: "Init"
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ inputs.backend-resource-group }}" \
+            -backend-config="storage_account_name=${{ inputs.backend-storage-account }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=${{ inputs.backend-key }}"
+
+      - name: "レビュー済み Plan を取得"
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ inputs.environment }}
+          path: ${{ inputs.working-directory }}
+
+      # ★ 再 plan しない。承認された内容をそのまま適用する
+      - name: "Apply"
+        working-directory: ${{ inputs.working-directory }}
+        run: terraform apply -auto-approve -no-color tfplan
+
+      - name: "サマリ出力"
+        if: always()
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          {
+            echo "### Terraform Apply 完了"
+            echo ""
+            echo "- **環境**: \`${{ inputs.environment }}\`"
+            echo "- **State**: \`${{ inputs.backend-key }}\`"
+            echo "- **Commit**: \`${{ github.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

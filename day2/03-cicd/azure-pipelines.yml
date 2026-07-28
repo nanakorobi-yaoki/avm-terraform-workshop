@@ -1,0 +1,128 @@
+# ===========================================
+# Azure DevOps — Terraform CI/CD with OIDC
+# ===========================================
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: "ubuntu-latest"
+
+variables:
+  TF_VERSION: "1.15.8"
+  WORKING_DIR: "$(System.DefaultWorkingDirectory)"
+  # サービスコネクション名 (Workload Identity Federation)
+  SERVICE_CONNECTION: "sc-terraform-oidc"
+
+stages:
+  # ─────────────────────────────────────
+  # Stage 1: Validate & Plan
+  # ─────────────────────────────────────
+  - stage: Plan
+    displayName: "Terraform Validate & Plan"
+    jobs:
+      - job: TerraformPlan
+        displayName: "Plan"
+        steps:
+          - task: TerraformInstaller@1
+            displayName: "Install Terraform"
+            inputs:
+              terraformVersion: $(TF_VERSION)
+
+          - task: TerraformTaskV4@4
+            displayName: "Terraform Init"
+            inputs:
+              provider: "azurerm"
+              command: "init"
+              workingDirectory: $(WORKING_DIR)
+              backendServiceArm: $(SERVICE_CONNECTION)
+              backendAzureRmResourceGroupName: "rg-terraform-state"
+              backendAzureRmStorageAccountName: "stterraformstate001"
+              backendAzureRmContainerName: "tfstate"
+              backendAzureRmKey: "workshop/demo.tfstate"
+
+          - script: |
+              terraform fmt -check -recursive
+              terraform validate
+            displayName: "Format Check & Validate"
+            workingDirectory: $(WORKING_DIR)
+
+          # 静的解析: tflint
+          - script: |
+              curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+              tflint --init
+              tflint --recursive
+            displayName: "TFLint"
+            workingDirectory: $(WORKING_DIR)
+
+          # セキュリティスキャン: Checkov
+          - script: |
+              pip install checkov
+              checkov -d $(WORKING_DIR) --framework terraform --soft-fail
+            displayName: "Checkov Security Scan"
+
+          # 脆弱性スキャン: Trivy
+          - script: |
+              curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+              trivy config $(WORKING_DIR) --exit-code 0
+            displayName: "Trivy Config Scan"
+
+          - task: TerraformTaskV4@4
+            displayName: "Terraform Plan"
+            inputs:
+              provider: "azurerm"
+              command: "plan"
+              workingDirectory: $(WORKING_DIR)
+              environmentServiceNameAzureRM: $(SERVICE_CONNECTION)
+              commandOptions: "-out=tfplan"
+
+          - publish: $(WORKING_DIR)/tfplan
+            artifact: tfplan
+            displayName: "Publish Plan"
+
+  # ─────────────────────────────────────
+  # Stage 2: Apply (手動承認)
+  # ─────────────────────────────────────
+  - stage: Apply
+    displayName: "Terraform Apply"
+    dependsOn: Plan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: TerraformApply
+        displayName: "Apply"
+        environment: "production"   # ← 承認ゲートを設定
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: TerraformInstaller@1
+                  displayName: "Install Terraform"
+                  inputs:
+                    terraformVersion: $(TF_VERSION)
+
+                - task: TerraformTaskV4@4
+                  displayName: "Terraform Init"
+                  inputs:
+                    provider: "azurerm"
+                    command: "init"
+                    workingDirectory: $(WORKING_DIR)
+                    backendServiceArm: $(SERVICE_CONNECTION)
+                    backendAzureRmResourceGroupName: "rg-terraform-state"
+                    backendAzureRmStorageAccountName: "stterraformstate001"
+                    backendAzureRmContainerName: "tfstate"
+                    backendAzureRmKey: "workshop/demo.tfstate"
+
+                - download: current
+                  artifact: tfplan
+
+                - task: TerraformTaskV4@4
+                  displayName: "Terraform Apply"
+                  inputs:
+                    provider: "azurerm"
+                    command: "apply"
+                    workingDirectory: $(WORKING_DIR)
+                    environmentServiceNameAzureRM: $(SERVICE_CONNECTION)
+                    commandOptions: "$(Pipeline.Workspace)/tfplan/tfplan"

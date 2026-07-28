@@ -1,0 +1,634 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 1 — Terraform 基礎 Deep Dive ガイド</title>
+<style>
+:root{--azure:#0078D4;--azure-dk:#003366;--azure-lt:#50B0F0;--accent:#00B7C3;--bg:#F0F6FF;--code-bg:#1B1B1F;--code:#D4D4D4;--kw:#569CD6;--str:#CE9178;--cmt:#6A9955;--fn:#DCDCAA;--w:#FFF;--g1:#F5F5F5;--g2:#E5E5E5;--g7:#444;--g9:#1A1A1A;--sidebar-w:260px}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Segoe UI','Noto Sans JP',sans-serif;color:var(--g9);line-height:1.8;background:var(--w);transition:margin-left .25s ease}
+body.sidebar-pinned{margin-left:var(--sidebar-w)}
+header{background:linear-gradient(135deg,var(--azure-dk),var(--azure),var(--accent));color:var(--w);padding:48px 40px;text-align:center}
+header h1{font-size:2.2rem;margin-bottom:10px}header p{font-size:1.1rem;opacity:.9}header .meta{margin-top:16px;font-size:.9rem;opacity:.7}
+
+/* Hover trigger */
+.sidebar-edge{position:fixed;top:0;left:0;width:12px;height:100vh;z-index:999;cursor:pointer}
+
+/* Sidebar - hidden by default, slides in on hover or pin */
+.sidebar{position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;background:var(--azure-dk);color:var(--w);overflow-y:auto;z-index:1000;padding:16px 0;font-size:.82rem;scrollbar-width:thin;scrollbar-color:var(--azure-lt) var(--azure-dk);transform:translateX(-100%);transition:transform .25s ease}
+.sidebar.open{transform:translateX(0)}
+.sidebar::-webkit-scrollbar{width:5px}.sidebar::-webkit-scrollbar-thumb{background:var(--azure-lt);border-radius:3px}
+.sidebar .logo-row{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 14px;border-bottom:1px solid rgba(255,255,255,.2);margin-bottom:8px}
+.sidebar .logo-row .logo-text{font-size:1rem;font-weight:700;color:var(--azure-lt)}
+.sidebar .pin-btn{background:none;border:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.7);cursor:pointer;padding:3px 8px;border-radius:4px;font-size:.8rem;transition:all .15s}
+.sidebar .pin-btn:hover{border-color:var(--accent);color:var(--w)}
+.sidebar .pin-btn.pinned{background:var(--accent);color:var(--azure-dk);border-color:var(--accent)}
+.sidebar a{display:block;padding:6px 16px;color:rgba(255,255,255,.75);text-decoration:none;transition:all .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar a:hover,.sidebar a.active{background:rgba(255,255,255,.12);color:var(--w);border-left:3px solid var(--accent);padding-left:13px}
+.sidebar .section-group{margin-bottom:2px}
+.sidebar .section-label{display:flex;align-items:center;justify-content:space-between;padding:8px 16px 4px;font-size:.68rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--azure-lt);cursor:pointer;user-select:none}
+.sidebar .section-label::after{content:'▾';font-size:.75rem;transition:transform .2s}
+.sidebar .section-label.collapsed::after{transform:rotate(-90deg)}
+.sidebar .section-items{max-height:500px;overflow:hidden;transition:max-height .3s ease}
+.sidebar .section-items.collapsed{max-height:0}
+.sidebar .sub-item{padding-left:28px;font-size:.78rem;color:rgba(255,255,255,.55)}
+
+/* Main content */
+.container{max-width:100%;padding:32px 48px}
+.toc{display:none}
+section{margin-bottom:48px;padding-top:16px;border-top:2px solid var(--g2);scroll-margin-top:16px}section:first-of-type{border-top:none}
+h2{font-size:1.7rem;color:var(--azure-dk);margin-bottom:14px;padding-bottom:8px;border-bottom:3px solid var(--azure)}
+h3{font-size:1.25rem;color:var(--azure);margin:24px 0 10px}h4{font-size:1.05rem;color:var(--g7);margin:18px 0 8px}
+p{margin-bottom:12px}ul,ol{margin:0 0 14px 22px}li{margin-bottom:5px}
+pre{background:var(--code-bg);color:var(--code);padding:16px 20px;border-radius:8px;font-family:'Cascadia Code','Fira Code',Consolas,monospace;font-size:.82rem;line-height:1.55;overflow-x:auto;margin:12px 0 18px;border-left:4px solid var(--azure)}
+code{background:var(--g1);padding:2px 5px;border-radius:4px;font-family:'Cascadia Code',Consolas,monospace;font-size:.86em;color:var(--azure-dk)}pre code{background:none;padding:0;color:inherit}
+.kw{color:var(--kw)}.str{color:var(--str)}.cmt{color:var(--cmt)}.fn{color:var(--fn)}
+table{width:100%;border-collapse:collapse;margin:14px 0 20px;font-size:.88rem}
+th{background:var(--azure);color:var(--w);padding:10px 14px;text-align:left}td{padding:8px 14px;border-bottom:1px solid var(--g2)}tr:nth-child(even) td{background:var(--bg)}
+.callout{border-left:4px solid var(--accent);background:var(--bg);padding:14px 18px;border-radius:0 8px 8px 0;margin:14px 0 20px}
+.warn{border-left-color:#D83B01;background:#FFF4F0}.tip{border-left-color:#107C10;background:#F0FFF0}
+.callout strong{color:var(--azure)}.warn strong{color:#D83B01}.tip strong{color:#107C10}
+a{color:var(--azure)}
+@media(max-width:768px){.sidebar,.sidebar-edge{display:none}body,body.sidebar-pinned{margin-left:0}header{padding:32px 20px}.container{padding:24px 16px}.toc{display:block;background:var(--bg);border-radius:8px;padding:16px 20px;margin-bottom:32px;border-left:4px solid var(--azure)}.toc h2{color:var(--azure);font-size:1.1rem;margin-bottom:8px}.toc ol{padding-left:18px}.toc a{color:var(--azure);text-decoration:none}}
+@media print{.sidebar,.sidebar-edge{display:none}body,body.sidebar-pinned{margin-left:0}.container{max-width:100%;padding:20px}.toc{display:block}pre{font-size:.75rem}}
+</style>
+</head>
+<body>
+
+<div class="sidebar-edge" id="edge"></div>
+
+<nav class="sidebar" id="sidebar">
+  <div class="logo-row">
+    <span class="logo-text">Day 1 ガイド</span>
+    <button class="pin-btn" id="pinBtn" onclick="togglePin()">📌 固定</button>
+  </div>
+
+  <div class="section-group">
+    <div class="section-label" onclick="toggleSection(this)">概要</div>
+    <div class="section-items">
+      <a href="#agenda">セッションアジェンダ</a>
+    </div>
+  </div>
+
+  <div class="section-group">
+    <div class="section-label" onclick="toggleSection(this)">座学</div>
+    <div class="section-items">
+      <a href="#iac">IaC 入門</a>
+      <a href="#avm">AVM 詳解</a>
+      <a href="#tf">Terraform の特徴</a>
+      <a href="#workflow">コアワークフロー</a>
+      <a href="#vars">変数・ローカル値</a>
+    </div>
+  </div>
+
+  <div class="section-group">
+    <div class="section-label" onclick="toggleSection(this)">デモ</div>
+    <div class="section-items">
+      <a href="#demo01">Demo 01: リソース作成</a>
+      <a href="#demo01" class="sub-item">→ lifecycle</a>
+      <a href="#demo01" class="sub-item">→ 状態ファイル</a>
+      <a href="#demo03">Demo 02: AVM Databricks</a>
+      <a href="#demo03" class="sub-item">→ コード解説</a>
+      <a href="#demo03" class="sub-item">→ 実行手順</a>
+    </div>
+  </div>
+
+  <div class="section-group">
+    <div class="section-label" onclick="toggleSection(this)">まとめ</div>
+    <div class="section-items">
+      <a href="#summary">まとめ & 次のステップ</a>
+      <a href="#links">参照リンク集</a>
+      <a href="#appendix-demo02" class="sub-item">付録: 変数デモ</a>
+    </div>
+  </div>
+</nav>
+
+<script>
+const sb=document.getElementById('sidebar'),edge=document.getElementById('edge'),pin=document.getElementById('pinBtn');
+let pinned=false;
+edge.addEventListener('mouseenter',()=>{if(!pinned)sb.classList.add('open')});
+sb.addEventListener('mouseleave',()=>{if(!pinned)sb.classList.remove('open')});
+function togglePin(){
+  pinned=!pinned;
+  sb.classList.toggle('open',pinned);
+  pin.classList.toggle('pinned',pinned);
+  document.body.classList.toggle('sidebar-pinned',pinned);
+  pin.textContent=pinned?'📌 固定中':'📌 固定';
+}
+function toggleSection(el){el.classList.toggle('collapsed');el.nextElementSibling.classList.toggle('collapsed')}
+document.addEventListener('scroll',()=>{
+  const ss=document.querySelectorAll('section[id]'),ls=document.querySelectorAll('.sidebar a[href^="#"]');
+  let c='';ss.forEach(s=>{if(scrollY>=s.offsetTop-80)c=s.id});
+  ls.forEach(l=>l.classList.toggle('active',l.getAttribute('href')==='#'+c));
+});
+</script>
+
+<header>
+<h1>Day 1 — Terraform 基礎 Deep Dive</h1>
+<p>Azure Infrastructure as Code with Azure Verified Modules</p>
+<div class="meta">2025年7月22日（火）10:00 – 12:00 ｜ 講師: Harshad Khole (コレ ハルシャド) — Microsoft CSA</div>
+</header>
+<div class="container">
+<nav class="toc"><h2>目次</h2><ol>
+<li><a href="#agenda">セッションアジェンダ</a></li>
+<li><a href="#iac">Infrastructure as Code 入門</a></li>
+<li><a href="#avm">Azure Verified Modules (AVM) とは</a></li>
+<li><a href="#tf">Terraform の特徴と基本思想</a></li>
+<li><a href="#workflow">コアワークフロー (init / plan / apply)</a></li>
+<li><a href="#demo01">Demo 01: リソース作成 + lifecycle + 状態ファイル</a></li>
+<li><a href="#vars">変数・ローカル値・出力</a></li>
+<li><a href="#demo03">Demo 02: AVM Databricks Workspace</a></li>
+<li><a href="#summary">まとめ & 次のステップ</a></li>
+<li><a href="#links">参照リンク集</a></li>
+</ol></nav>
+
+<!-- ============================== 1. アジェンダ ============================== -->
+<section id="agenda"><h2>1. セッションアジェンダ</h2>
+<table><tr><th>時間</th><th>区分</th><th>内容</th></tr>
+<tr><td>10:00–10:10</td><td>導入</td><td>ご挨拶・本日の流れ・ゴールの確認</td></tr>
+<tr><td>10:10–11:10</td><td>座学</td><td>IaC 入門 → AVM 詳解（信頼性の仕組み・分類・一貫インターフェース）→ Terraform コアワークフロー → 変数の仕組み</td></tr>
+<tr><td>11:10–11:20</td><td>休憩</td><td>—</td></tr>
+<tr><td>11:20–11:50</td><td>デモ</td><td>Demo 01（リソース作成 + lifecycle）→ Demo 02（AVM Databricks Workspace デプロイ）</td></tr>
+<tr><td>11:50–12:00</td><td>まとめ</td><td>Day 1 まとめ & Q&A</td></tr></table>
+<div class="callout tip"><strong>💡 本日のゴール:</strong> Terraform の基本ワークフロー・変数の仕組みを理解し、AVM モジュール（Databricks）を使った実践的なデプロイを体験する。</div>
+</section>
+
+<!-- ============================== 2. IaC 入門 ============================== -->
+<section id="iac"><h2>2. Infrastructure as Code 入門</h2>
+<h3>なぜ IaC が必要なのか</h3>
+<p>従来のインフラ管理では、Azure Portal でのクリック操作や手順書に基づく手動設定が一般的でした。この方法には以下のような課題があります:</p>
+<ul>
+<li><strong>属人化</strong> — 担当者しか手順を把握しておらず、引き継ぎが難しい</li>
+<li><strong>環境ごとの差異</strong> — dev / stg / prod で設定が少しずつ異なってしまう</li>
+<li><strong>変更履歴の不透明さ</strong> — いつ・誰が・何を変えたのか追えない</li>
+<li><strong>展開に時間がかかる</strong> — 同じ構成を複数環境に展開するのに手間がかかる</li>
+<li><strong>構成のドリフト</strong> — コードと実環境の状態が乖離しても気づけない</li>
+</ul>
+<h3>IaC のメリット</h3>
+<table><tr><th>メリット</th><th>説明</th></tr>
+<tr><td>再現性</td><td>同じコードから同じ環境を何度でも作成</td></tr>
+<tr><td>一貫性</td><td>dev/stg/prod を同一テンプレートで管理</td></tr>
+<tr><td>バージョン管理</td><td>Git で変更履歴を追跡、PR でレビュー</td></tr>
+<tr><td>自動化</td><td>CI/CD パイプラインで自動デプロイ</td></tr>
+<tr><td>監査対応</td><td>Git のコミット履歴で「誰が・いつ・何を変更したか」を追跡できる</td></tr>
+<tr><td>ドリフト検知</td><td><code>terraform plan</code> で、実環境とコードの差分をすぐに確認できる</td></tr></table>
+</section>
+
+<!-- ============================== 3. AVM（IaC 直後に移動）============================== -->
+<section id="avm"><h2>3. Azure Verified Modules (AVM) とは</h2>
+
+<h3>3.1 AVM が目指すもの</h3>
+<p>Azure Verified Modules (AVM) は、IaC モジュールの構築・利用・提供方法を<strong>標準化</strong>し、一貫性のあるベストプラクティスを提供するための Microsoft の取り組みです。Bicep と Terraform の両方に対応し、それぞれの言語固有のレジストリ（Terraform Registry / Bicep Registry）で公開されます。</p>
+<p>AVM の目的は、質の高い IaC モジュールの定義・構築方法・利用方法を標準化することで、<strong>信頼性の高いモジュールを提供し、プロジェクトのスピードを加速させること</strong>です。</p>
+<div class="callout"><strong>AVM ミッションステートメント:</strong> 「Well-Architected Framework の原則に従い、複数の IaC 言語で包括的な Azure Verified Modules ライブラリを提供すること。Microsoft が信頼できる唯一の情報源としてサポートし、Azure リソースとアーキテクチャパターンのデプロイ時間を短縮することで、すべての人と組織の IaC ジャーニーを支援する。」</div>
+
+<h3>3.1.1 なぜ AVM が必要なのか — 「One Microsoft」への統合</h3>
+<p>Microsoft 内部では、これまで多くの部門がそれぞれ独自に IaC モジュールを開発・提供してきました。しかし、各プロジェクトはコーディング規約、テストフレームワーク、サポート方針がバラバラで、ユーザーにとって「どれを信頼すべきか」が不明確でした。</p>
+<ul>
+<li><strong>一貫性の欠如</strong> — プロジェクトごとにスタイル・消費方法・テストが異なる</li>
+<li><strong>サポートの不透明さ</strong> — 個人開発のモジュールには公式サポートがなく、大規模エンタープライズでの採用障壁に</li>
+<li><strong>重複する取り組み</strong> — 同じリソースに対して複数のモジュールが存在し、どれが最新か不明</li>
+</ul>
+<p>AVM はこれらの課題を解決するため、<strong>「One Microsoft」</strong>として統一された戦略・定義・サポートのもとで IaC モジュールを提供します。</p>
+
+<h3>3.2 AVM はどのように信頼性を確保しているか</h3>
+<table><tr><th>仕組み</th><th>内容</th></tr>
+<tr><td><strong>1. Microsoft 公式サポート</strong></td><td>モジュール所有者が対応 → 3営業日以内に応答なければ AVM コアチームが介入 → セキュリティ問題は5営業日で製品グループにエスカレーション</td></tr>
+<tr><td><strong>2. 継続的メンテナンス</strong></td><td>各モジュールに所有者（Microsoft フルタイムエンジニア）を必須配置。GitHub Issue が放置されない体制</td></tr>
+<tr><td><strong>3. 明確な仕様への準拠</strong></td><td>言語共通の仕様 + Terraform 固有の仕様に沿って開発。モジュール間の一貫性と予測可能な動作を保証</td></tr>
+<tr><td><strong>4. WAF との整合性</strong></td><td>Well-Architected Framework の推奨事項（セキュリティ・信頼性・パフォーマンス・コスト最適化）に沿った既定値</td></tr>
+<tr><td><strong>5. ドキュメントと使用例</strong></td><td>各モジュールに詳細なドキュメントと具体的な使用例を提供。自己学習しやすい</td></tr>
+<tr><td><strong>6. 徹底的なテスト</strong></td><td>リリース前に自動テストで仕様準拠と動作を検証</td></tr></table>
+
+<h3>3.3 モジュールの分類</h3>
+<table><tr><th>分類</th><th>命名規則</th><th>説明</th><th>対象ユーザー</th></tr>
+<tr><td><strong>リソースモジュール</strong></td><td><code>avm-res-*</code></td><td>単一のリソースを WAF ベストプラクティスの設定でデプロイ。RBAC、ロック、PE、診断設定などの共通インターフェースを統合。外部依存リソースは作成しない。</td><td>個別リソースごとにベストプラクティスを適用したいユーザー</td></tr>
+<tr><td><strong>パターンモジュール</strong></td><td><code>avm-ptn-*</code></td><td>複数のリソース（多くはリソースモジュールを内部利用）をまとめてデプロイ。Azure Architecture Center のパターン実装に最適。</td><td>アーキテクチャパターンを簡単にデプロイしたいユーザー</td></tr>
+<tr><td><strong>ユーティリティモジュール</strong></td><td><code>avm-utl-*</code></td><td>リソースやパターンモジュールで再利用可能な関数やルーチンを提供。Azure リソースは直接デプロイしない（デプロイスクリプト除く）。<em>※ プレビュー段階</em></td><td>共通関数やヘルパーをモジュール間で再利用したいユーザー</td></tr></table>
+
+<h4>リソースモジュール例</h4>
+<p><a href="https://registry.terraform.io/modules/Azure/avm-res-compute-virtualmachine/azurerm/latest">avm-res-compute-virtualmachine</a>、<a href="https://registry.terraform.io/modules/Azure/avm-res-keyvault-vault/azurerm/latest">avm-res-keyvault-vault</a>、<a href="https://registry.terraform.io/modules/Azure/avm-res-databricks-workspace/azurerm/latest">avm-res-databricks-workspace</a></p>
+
+<h4>パターンモジュール例</h4>
+<p>Azure Landing Zone / Virtual WAN / Virtual Network Gateway / Hub Networking</p>
+
+<div class="callout"><strong>ポイント:</strong> どのモジュールもパラメータを変更するだけで様々な構成にデプロイ可能。内部の複雑さを意識せず、ドキュメントを見ながら活用できます。</div>
+
+<h3>3.4 一貫インターフェース</h3>
+<p>すべての AVM モジュールが共通で提供するインターフェースです。<strong>どのリソースでも同じ書き方</strong>で設定できるため、学習コストが最小化されます:</p>
+<ul>
+<li><code>tags</code> — 共通タグ</li>
+<li><code>lock</code> — リソースロック（CanNotDelete / ReadOnly）</li>
+<li><code>role_assignments</code> — RBAC ロール割り当て</li>
+<li><code>diagnostic_settings</code> — 診断設定（Log Analytics / Event Hub）</li>
+<li><code>managed_identities</code> — マネージド ID（SystemAssigned / UserAssigned）</li>
+<li><code>private_endpoints</code> — プライベートエンドポイント</li>
+<li><code>customer_managed_key</code> — CMK 暗号化</li>
+</ul>
+
+<h3>3.5 Terraform ユーザにとっての変化とメリット</h3>
+<p>以前は <a href="https://github.com/Azure/terraform-azure-modules">Terraform Verified Modules (TFVM)</a> が提供されていましたが、AVM の登場により、AVM 仕様に沿って開発された信頼性の高いモジュールを利用して Azure リソースをプロビジョニングできるようになりました。一部の TFVM モジュールは AVM への切り替えを促しています。</p>
+
+<h3>3.6 モジュール開発者にとってのメリット</h3>
+<p>AVM はモジュールを<strong>利用する</strong>だけでなく、<strong>開発する側</strong>にもメリットがあります。AVM の仕様やテスト手法は、Microsoft が「One Microsoft」として公開している Terraform のベストプラクティスです。この知見を自組織のモジュール開発に取り入れることで、社内モジュールの信頼性を高めることができます。</p>
+<div class="callout tip"><strong>💡 皆さんのチームへの提案:</strong> 現在社内で使っている Terraform モジュールの開発・運用に、AVM の仕様（一貫インターフェース・テスト手法・セマンティックバージョニング）を参考として取り入れてみてはいかがでしょうか。</div>
+
+<h3>3.6.1 AVM はどのように品質を強制しているか — 6 つの仕組み</h3>
+<p>AVM が他の IaC モジュール提供の取り組みと異なるのは、品質を<strong>仕組みとして強制</strong>している点です:</p>
+<table><tr><th>#</th><th>仕組み</th><th>内容</th></tr>
+<tr><td>1</td><td><strong>公開レジストリへの公開</strong></td><td>Terraform Registry / Bicep Public Module Registry に公開。透明性と発見可能性を確保</td></tr>
+<tr><td>2</td><td><strong>仕様の策定・公開・維持</strong></td><td>言語共通仕様 + 言語固有仕様（Bicep / Terraform）を <a href="https://azure.github.io/Azure-Verified-Modules/specs/">公式サイト</a> で公開</td></tr>
+<tr><td>3</td><td><strong>貢献ガイドラインの整備</strong></td><td>各言語向けに、モジュールの開発・公開手順を文書化</td></tr>
+<tr><td>4</td><td><strong>仕様準拠のテスト強制</strong></td><td>Unit テスト & Integration テストで、モジュールが AVM 仕様に準拠しているかを自動検証</td></tr>
+<tr><td>5</td><td><strong>E2E デプロイテスト</strong></td><td>各モジュールの Example が実際にデプロイできることを自動テストで検証</td></tr>
+<tr><td>6</td><td><strong>長期サポート保証</strong></td><td>AVM コアチーム + Microsoft CSS + Azure 製品グループが連携。モジュール所有者の状態に関わらずサポートを継続</td></tr></table>
+
+<h3>3.6.2 AI アシスト IaC 開発（実験的機能）</h3>
+<p>AVM は GitHub Copilot と連携した <strong>AI アシスト IaC ソリューション開発</strong> の実験的サポートを開始しています。AVM Spec Kit を使って、仕様に基づいた Terraform / Bicep コードの生成を加速できます。</p>
+<p>詳細: <a href="https://azure.github.io/Azure-Verified-Modules/experimental/ai-assisted-sol-dev/">AI-Assisted Solution Development</a></p>
+
+<h3>3.7 AVM モジュールの見つけ方</h3>
+<table><tr><th>方法</th><th>URL</th></tr>
+<tr><td>AVM モジュール索引</td><td><a href="https://aka.ms/avm/index">aka.ms/avm/index</a></td></tr>
+<tr><td>Terraform Registry で検索</td><td><a href="https://registry.terraform.io/search/modules?q=avm">registry.terraform.io/search?q=avm</a></td></tr>
+<tr><td>GitHub で検索</td><td><a href="https://github.com/Azure?q=terraform-azurerm-avm">github.com/Azure?q=terraform-azurerm-avm</a></td></tr>
+<tr><td>AVM 公式サイト</td><td><a href="https://aka.ms/AVM">aka.ms/AVM</a></td></tr>
+<tr><td>AVM FAQ</td><td><a href="https://azure.github.io/Azure-Verified-Modules/faq/">azure.github.io/Azure-Verified-Modules/faq</a></td></tr></table>
+</section>
+
+<!-- ============================== 4. Terraform の特徴 ============================== -->
+<section id="tf"><h2>4. Terraform の特徴と基本思想</h2>
+<h3>主な特徴</h3>
+<ul>
+<li><strong>マルチクラウド</strong>: Azure / AWS / GCP / 3000+ プロバイダ</li>
+<li><strong>宣言的 (Declarative)</strong>: 「望ましい状態」を定義 → 差分だけ適用</li>
+<li><strong>HCL</strong>: JSON より人間に優しい設定言語</li>
+<li><strong>状態管理</strong>: <code>terraform.tfstate</code> で現在状態を追跡</li>
+<li><strong>冪等性（べきとうせい）</strong>: 同じコードを何度実行しても、常に同じ結果になる</li>
+<li><strong>モジュール</strong>: 再利用可能なコンポーネント設計</li>
+</ul>
+<h3>Bicep との比較</h3>
+<table><tr><th>観点</th><th>Terraform</th><th>Bicep</th></tr>
+<tr><td>対象</td><td>マルチクラウド</td><td>Azure 専用</td></tr>
+<tr><td>状態管理</td><td>明示的 (tfstate)</td><td>ARM が暗黙管理</td></tr>
+<tr><td>AVM 対応</td><td>✅</td><td>✅</td></tr>
+<tr><td>コミュニティ</td><td>非常に大きい</td><td>Microsoft 中心</td></tr></table>
+<p>本ワークショップでは、皆さんのチームで既に Terraform を標準的にご利用いただいているため、Terraform をベースに進めます。</p>
+</section>
+
+<!-- ============================== 5. コアワークフロー ============================== -->
+<section id="workflow"><h2>5. コアワークフロー (init / plan / apply)</h2>
+<h3>terraform init</h3>
+<p>プロジェクト初期化。プロバイダプラグインのダウンロードとバックエンド初期化を行います。何度実行しても安全。</p>
+<pre>$ terraform init
+Initializing provider plugins...
+- Finding hashicorp/azurerm versions matching "~> 4.0"...
+- Installing hashicorp/azurerm v4.x.x...
+Terraform has been successfully initialized!</pre>
+
+<h3>terraform plan</h3>
+<p>変更内容のプレビュー。<strong>リソースには一切変更を加えない</strong>読み取り専用操作。作成(+) / 変更(~) / 削除(-) の数を表示。</p>
+<pre>$ terraform plan
+Plan: 2 to add, 0 to change, 0 to destroy.</pre>
+
+<h3>terraform apply</h3>
+<p>plan の内容を実行しリソースを実際に作成・変更・削除。確認プロンプトあり（<code>-auto-approve</code> でスキップ可）。</p>
+<pre>$ terraform apply -auto-approve
+Apply complete! Resources: 2 added, 0 changed, 0 destroyed.</pre>
+
+<h3>その他の重要コマンド</h3>
+<table><tr><th>コマンド</th><th>用途</th><th>安全性</th></tr>
+<tr><td><code>terraform show</code></td><td>現在の状態を表示</td><td>読み取り専用</td></tr>
+<tr><td><code>terraform state list</code></td><td>管理リソース一覧</td><td>読み取り専用</td></tr>
+<tr><td><code>terraform state show &lt;addr&gt;</code></td><td>特定リソース詳細</td><td>読み取り専用</td></tr>
+<tr><td><code>terraform destroy</code></td><td>全リソース削除</td><td>⚠️ 破壊的</td></tr>
+<tr><td><code>terraform console</code></td><td>式の対話テスト</td><td>読み取り専用</td></tr>
+<tr><td><code>terraform fmt</code></td><td>コードフォーマット</td><td>ファイル変更</td></tr>
+<tr><td><code>terraform validate</code></td><td>構文・型チェック</td><td>読み取り専用</td></tr></table>
+<div class="callout"><strong>ベストプラクティス:</strong> 常に plan → レビュー → apply の順。CI/CD では plan 結果を PR コメントに投稿し、チームレビューを経てから apply。</div>
+</section>
+
+<!-- ============================== 6. Demo 01 ============================== -->
+<section id="demo01"><h2>6. Demo 01: リソース作成 + lifecycle + 状態ファイル</h2>
+<p><strong>ディレクトリ:</strong> <code>day1/01-resource-creation/</code></p>
+<h3>6.1 terraform ブロック & provider</h3>
+<pre><span class="kw">terraform</span> {
+  <span class="kw">required_version</span> = <span class="str">"&gt;= 1.9"</span>
+  <span class="kw">required_providers</span> {
+    <span class="kw">azurerm</span> = {
+      source  = <span class="str">"hashicorp/azurerm"</span>
+      version = <span class="str">"~&gt; 4.0"</span>   <span class="cmt"># 4.x のみ許可</span>
+    }
+  }
+}
+<span class="kw">provider</span> <span class="str">"azurerm"</span> {
+  features {}
+  subscription_id = <span class="str">"00000000-..."</span>
+}
+<span class="cmt"># マルチリージョン用エイリアス</span>
+<span class="kw">provider</span> <span class="str">"azurerm"</span> {
+  <span class="kw">alias</span> = <span class="str">"westus"</span>
+  features {}
+  subscription_id = <span class="str">"00000000-..."</span>
+}</pre>
+<p><strong>バージョン制約:</strong> <code>~> 4.0</code> = 4.0.0以上 5.0.0未満（pessimistic constraint）。<code>= 4.1.2</code> = 完全固定。</p>
+<p><strong>Provider エイリアス:</strong> マルチリージョンやマルチサブスクリプションデプロイ用。リソース側で <code>provider = azurerm.westus</code> と指定。</p>
+
+<h3>6.2 リソース定義と暗黙的依存関係</h3>
+<pre><span class="kw">resource</span> <span class="str">"azurerm_resource_group"</span> <span class="str">"demo"</span> {
+  name     = <span class="str">"rg-terraform-demo-day1"</span>
+  location = <span class="str">"japaneast"</span>
+  tags     = { environment = <span class="str">"demo"</span> }
+}
+
+<span class="kw">resource</span> <span class="str">"azurerm_storage_account"</span> <span class="str">"demo"</span> {
+  name                = <span class="str">"stterraformdemo001"</span>
+  resource_group_name = azurerm_resource_group.demo.name   <span class="cmt"># ← 暗黙的依存関係</span>
+  location            = azurerm_resource_group.demo.location
+  account_tier        = <span class="str">"Standard"</span>
+  account_replication_type = <span class="str">"LRS"</span>
+}</pre>
+<p><code>azurerm_resource_group.demo.name</code> の参照により、Terraform は RG を先に作成してから Storage Account を作成します。</p>
+
+<h3>6.3 lifecycle メタ引数</h3>
+<table><tr><th>メタ引数</th><th>動作</th><th>ユースケース</th></tr>
+<tr><td><code>prevent_destroy</code></td><td>destroy をブロック</td><td>本番 DB / Key Vault の誤削除防止</td></tr>
+<tr><td><code>ignore_changes</code></td><td>指定属性の差分を無視</td><td>Portal から変更される tags</td></tr>
+<tr><td><code>create_before_destroy</code></td><td>新→旧の順で置き換え</td><td>ダウンタイム最小化</td></tr>
+<tr><td><code>replace_triggered_by</code></td><td>依存変更時に強制再作成</td><td>証明書更新時の再デプロイ</td></tr></table>
+
+<pre><span class="kw">lifecycle</span> {
+  ignore_changes        = [tags[<span class="str">"updated_by"</span>], tags[<span class="str">"last_modified"</span>]]
+  create_before_destroy = <span class="kw">true</span>
+}</pre>
+
+<h3>6.4 状態ファイル (terraform.tfstate)</h3>
+<p>apply 後にリソース情報が JSON で保存されます。<code>serial</code>（バージョン番号）、<code>lineage</code>（一意ID）、<code>resources</code>（管理対象）が重要フィールドです。</p>
+<pre>$ terraform state list
+azurerm_resource_group.demo
+azurerm_storage_account.demo
+
+$ terraform state show azurerm_storage_account.demo
+<span class="cmt"># → id, primary_blob_endpoint, etc. 全属性表示</span></pre>
+<div class="callout warn"><strong>⚠️ 重要:</strong> tfstate には sensitive な値が平文で保存される。本番では<strong>リモート状態</strong>（Azure Blob + 暗号化 + ロック）を必ず使用 → Day 2 で詳解。</div>
+
+<h3>6.5 デモ実行手順（コピー＆ペースト用）</h3>
+
+<h4>Step 1: ディレクトリ移動 & 初期化</h4>
+<pre>cd c:\Projects\AVM_Terraform_Workshop\day1\01-resource-creation
+terraform init</pre>
+<p><strong>確認:</strong> <code>Terraform has been successfully initialized!</code> と表示。azurerm v4.81.0 がダウンロードされる。</p>
+
+<h4>Step 2: Plan（変更プレビュー）</h4>
+<pre>terraform plan</pre>
+<p><strong>確認:</strong> <code>Plan: 2 to add, 0 to change, 0 to destroy.</code> — RG + Storage Account の 2 リソース。</p>
+<p><strong>講師ポイント:</strong> <code>+</code> 行 = 作成。<code>resource_group_name = (known after apply)</code> = 暗黙的依存関係。</p>
+
+<h4>Step 3: Apply（リソース作成）</h4>
+<pre>terraform apply -auto-approve</pre>
+<p><strong>確認:</strong> <code>Apply complete! Resources: 2 added</code> — 約 30 秒。</p>
+
+<h4>Step 4: 状態ファイル確認</h4>
+<pre>terraform state list</pre>
+<p><strong>確認:</strong> <code>azurerm_resource_group.demo</code> と <code>azurerm_storage_account.demo</code> の 2 行が表示。</p>
+<pre>terraform state show azurerm_resource_group.demo</pre>
+<p><strong>講師ポイント:</strong> <code>id</code>（Azure Resource ID）、<code>location = "japaneast"</code>、<code>tags</code> を指しながら「Terraform が追跡する属性」を説明。</p>
+
+<h4>Step 5: lifecycle デモ — ignore_changes の動作確認</h4>
+<pre><span class="cmt"># 5a. Azure CLI で tags を追加（Portal からの変更をシミュレート）</span>
+$rgId = (terraform state show azurerm_resource_group.demo | Select-String "^\s+id\s" | ForEach-Object { $_.ToString().Split("=",2)[1].Trim().Trim('"') })
+az tag update --resource-id $rgId --operation merge --tags updated_by=portal_user</pre>
+
+<pre><span class="cmt"># 5b. plan を再実行 → ignore_changes のため差分なし</span>
+terraform plan</pre>
+<p><strong>確認:</strong> <code>No changes. Your infrastructure matches the configuration.</code></p>
+<p><strong>講師ポイント:</strong> 「Portal で tags を追加したのに差分なし → <code>ignore_changes</code> が効いている。本番で Portal 操作とTerraform を共存させるパターン。」</p>
+
+<h4>Step 6: クリーンアップ</h4>
+<pre>terraform destroy -auto-approve</pre>
+<p><strong>確認:</strong> <code>Destroy complete! Resources: 2 destroyed.</code></p>
+</section>
+
+<!-- ============================== 7. 変数 ============================== -->
+<section id="vars"><h2>7. 変数・ローカル値・出力</h2>
+<h3>7.1 変数の優先順位</h3>
+<table><tr><th>優先度</th><th>ソース</th><th>例</th></tr>
+<tr><td>1 (最高)</td><td><code>-var</code> / <code>-var-file</code></td><td><code>terraform apply -var="env=prod"</code></td></tr>
+<tr><td>2</td><td><code>*.auto.tfvars</code></td><td>アルファベット順で自動読み込み</td></tr>
+<tr><td>3</td><td><code>terraform.tfvars</code></td><td>デフォルト自動読み込み</td></tr>
+<tr><td>4</td><td>環境変数 <code>TF_VAR_*</code></td><td><code>export TF_VAR_location=westus</code></td></tr>
+<tr><td>5</td><td><code>default</code></td><td>variable ブロック内</td></tr>
+<tr><td>6 (最低)</td><td>対話プロンプト</td><td>default 未設定時</td></tr></table>
+
+<h3>7.2 型システム</h3>
+<p>基本型: <code>string</code> / <code>number</code> / <code>bool</code>。コレクション: <code>list(T)</code> / <code>map(T)</code> / <code>set(T)</code>。</p>
+<pre><span class="cmt"># object: 構造化データ（optional で省略可能フィールド）</span>
+<span class="kw">variable</span> <span class="str">"network_config"</span> {
+  type = <span class="fn">object</span>({
+    vnet_cidr  = <span class="kw">string</span>
+    enable_nsg = <span class="kw">bool</span>
+    dns        = <span class="fn">optional</span>(<span class="fn">list</span>(<span class="kw">string</span>), [])
+  })
+}
+
+<span class="cmt"># tuple: 固定長・異種型</span>
+<span class="kw">variable</span> <span class="str">"info"</span> { type = <span class="fn">tuple</span>([<span class="kw">string</span>, <span class="kw">number</span>, <span class="kw">bool</span>]) }</pre>
+
+<h3>7.3 sensitive & validation</h3>
+<pre><span class="kw">variable</span> <span class="str">"db_password"</span> {
+  type      = <span class="kw">string</span>
+  <span class="kw">sensitive</span> = <span class="kw">true</span>   <span class="cmt"># plan/apply でマスク表示</span>
+}
+<span class="kw">variable</span> <span class="str">"environment"</span> {
+  type    = <span class="kw">string</span>
+  default = <span class="str">"dev"</span>
+  <span class="kw">validation</span> {
+    condition     = <span class="fn">contains</span>([<span class="str">"dev"</span>,<span class="str">"stg"</span>,<span class="str">"prod"</span>], var.environment)
+    error_message = <span class="str">"dev, stg, prod のいずれか"</span>
+  }
+}</pre>
+<div class="callout warn"><strong>⚠️:</strong> sensitive は画面マスクのみ。tfstate には平文保存。</div>
+
+<h3>7.4 ローカル値 (locals)</h3>
+<pre><span class="kw">locals</span> {
+  name_prefix = <span class="str">"${var.project}-${var.environment}"</span>
+  rg_name     = <span class="str">"rg-${local.name_prefix}"</span>
+  common_tags = <span class="fn">merge</span>({ managed_by = <span class="str">"terraform"</span> }, var.extra_tags)
+}</pre>
+<p>変数と関数を組み合わせて作る中間的な値です。外部からの入力は受け付けません。命名規則の統一やタグの共通化に便利です。</p>
+</section>
+
+<section id="vars-brief"><h2>7. 変数・ローカル値・出力（概要）</h2>
+<p>変数の仕組みについては座学パートでカバーしました。デモの詳細手順は<a href="#appendix-demo02">付録: Demo 変数 Deep Dive</a>をご参照ください。後日、自習用としてお使いいただけます。</p>
+<div class="callout"><strong>座学で押さえたポイント:</strong> 変数の 6 段階の優先順位 / <code>sensitive</code> によるマスク表示 / <code>validation</code> による入力チェック / <code>object</code> / <code>tuple</code> / <code>optional()</code> の複合型 / <code>locals</code> による命名規則の統一</div>
+</section>
+
+<!-- ============================== 8. Demo 02: AVM Databricks ============================== -->
+<section id="demo03"><h2>8. Demo 02: AVM Databricks Workspace</h2>
+<p><strong>ディレクトリ:</strong> <code>day1/03-avm-databricks/</code></p>
+<p><strong>モジュール:</strong> <a href="https://registry.terraform.io/modules/Azure/avm-res-databricks-workspace/azurerm/latest">Azure/avm-res-databricks-workspace/azurerm</a> ｜ <a href="https://github.com/Azure/terraform-azurerm-avm-res-databricks-workspace">GitHub</a></p>
+
+<h3>8.1 コード解説</h3>
+<pre><span class="kw">module</span> <span class="str">"databricks"</span> {
+  <span class="kw">source</span>  = <span class="str">"Azure/avm-res-databricks-workspace/azurerm"</span>
+  <span class="kw">version</span> = <span class="str">"~&gt; 0.5"</span>
+
+  name                = <span class="str">"dbw-avm-demo-dev"</span>
+  resource_group_name = azurerm_resource_group.demo.name
+  location            = azurerm_resource_group.demo.location
+
+  sku = <span class="str">"premium"</span>   <span class="cmt"># Unity Catalog / RBAC / 監査ログ対応</span>
+
+  <span class="cmt"># 一貫インターフェース: tags</span>
+  tags = local.common_tags
+
+  <span class="cmt"># 一貫インターフェース: diagnostic_settings</span>
+  diagnostic_settings = {
+    to_law = {
+      name                  = <span class="str">"diag-databricks"</span>
+      workspace_resource_id = azurerm_log_analytics_workspace.demo.id
+    }
+  }
+}</pre>
+
+<h3>8.2 ポイント解説</h3>
+<ul>
+<li><strong><code>source</code></strong> — Registry 上の AVM モジュールパス。<code>terraform init</code> で自動ダウンロード。</li>
+<li><strong><code>version = "~> 0.5"</code></strong> — 0.5.x のみ許可。チーム全員が同じバージョンを使い Breaking Change を防ぐ。</li>
+<li><strong><code>sku = "premium"</code></strong> — Unity Catalog / RBAC / 監査ログ対応。データプラットフォームチームなら premium 推奨。</li>
+<li><strong><code>tags</code> / <code>diagnostic_settings</code></strong> — 他の AVM モジュール（VNet / Key Vault / Storage）でも<strong>全く同じ構文</strong>。</li>
+</ul>
+
+<h3>8.3 Databricks SKU 比較</h3>
+<table><tr><th>SKU</th><th>特徴</th><th>推奨シナリオ</th></tr>
+<tr><td>trial</td><td>14日間無料、全機能利用可能</td><td>PoC / 評価</td></tr>
+<tr><td>standard</td><td>標準機能</td><td>小規模チーム</td></tr>
+<tr><td>premium</td><td>Unity Catalog / RBAC / 監査ログ / IP ACL</td><td>エンタープライズ本番</td></tr></table>
+
+<h3>8.4 VNet インジェクション（参考）</h3>
+<p>セキュリティ要件が厳しい場合、Databricks クラスターを自社 VNet 内に配置可能:</p>
+<pre><span class="cmt"># オプション設定</span>
+custom_parameters = {
+  virtual_network_id  = <span class="str">"/subscriptions/.../virtualNetworks/vnet-dbw"</span>
+  public_subnet_name  = <span class="str">"snet-dbw-public"</span>
+  private_subnet_name = <span class="str">"snet-dbw-private"</span>
+}</pre>
+
+<h3>8.5 デモ実行手順（コピー＆ペースト用）</h3>
+
+<h4>Step 1: ディレクトリ移動 & 初期化</h4>
+<pre>cd c:\Projects\AVM_Terraform_Workshop\day1\03-avm-databricks
+
+<span class="cmt"># サブスクリプション ID を環境変数で渡す（コードに直書きしない）</span>
+<span class="cmt"># TF_VAR_&lt;変数名&gt; は Terraform が自動で読み込む規約です</span>
+$env:TF_VAR_subscription_id = (az account show --query id -o tsv)
+
+terraform init</pre>
+<p><strong>確認:</strong> <code>Downloading registry.terraform.io/Azure/avm-res-databricks-workspace/azurerm 0.5.0 for databricks...</code> が表示される。</p>
+<p><strong>講師ポイント:</strong> 「この瞬間に Terraform Registry から AVM モジュールがダウンロードされている。<code>source</code> + <code>version</code> で指定したバージョンが自動取得される仕組み。」ここで画面を止めて説明。</p>
+
+<h4>Step 2: Plan（変更プレビュー）</h4>
+<pre>terraform plan</pre>
+<p><strong>確認:</strong> Resource Group + Log Analytics Workspace + Databricks Workspace の作成が表示される。</p>
+<p><strong>講師ポイント:</strong> plan 出力で <code>module.databricks</code> 配下のリソースを指し、「AVM モジュール内部ではこれだけのリソースが自動設定されている」と説明。diagnostic_settings が含まれることも確認。</p>
+
+<h4>Step 3: Apply（リソース作成 — 約 2-3 分）</h4>
+<pre>terraform apply -auto-approve</pre>
+<p><strong>確認:</strong> <code>Apply complete!</code> — Databricks ワークスペースの作成には 2-3 分かかる。待ち時間中にコードの解説を続ける。</p>
+
+<h4>Step 4: ワークスペース URL を確認</h4>
+<pre>terraform output databricks_workspace_url</pre>
+<p><strong>確認:</strong> <code>"https://adb-xxxxxxxxxxxx.x.azuredatabricks.net"</code> 形式の URL が表示される。</p>
+
+<h4>Step 5: ブラウザで確認</h4>
+<pre><span class="cmt"># PowerShell でブラウザを開く</span>
+Start-Process (terraform output -raw databricks_workspace_url)</pre>
+<p><strong>確認:</strong> ブラウザで Databricks UI が開く。「Terraform コードだけでここまでのリソースが作成された」ことを実感してもらう。</p>
+
+<h4>Step 6: 作成されたリソースの確認</h4>
+<pre>terraform state list</pre>
+<p><strong>確認:</strong> <code>azurerm_resource_group.demo</code>、<code>azurerm_log_analytics_workspace.demo</code>、<code>module.databricks</code> 配下のリソース群が表示される。</p>
+
+<pre>terraform output</pre>
+<p><strong>確認:</strong> <code>databricks_workspace_url</code>、<code>databricks_workspace_id</code>、<code>resource_group_name</code> が全て表示。</p>
+
+<h4>Step 7: クリーンアップ</h4>
+<pre>terraform destroy -auto-approve</pre>
+<p><strong>確認:</strong> <code>Destroy complete!</code> — 全リソースが削除される（約 1-2 分）。</p>
+
+<div class="callout tip"><strong>💡 講師ヒント:</strong> Apply の待ち時間（2-3分）を活用して、「このモジュールは <a href="https://registry.terraform.io/modules/Azure/avm-res-databricks-workspace/azurerm/latest">Terraform Registry</a> で公開されている。Registry ページの Inputs / Outputs タブで使えるパラメータが確認できる」と Registry の見方を説明する。</div>
+</section>
+
+<!-- ============================== 9. まとめ ============================== -->
+<section id="summary"><h2>9. まとめ & 次のステップ</h2>
+<table><tr><th>トピック</th><th>キーポイント</th></tr>
+<tr><td>IaC の価値</td><td>再現性・一貫性・自動化・監査可能性</td></tr>
+<tr><td>AVM</td><td>One Microsoft / 3分類 / 一貫インターフェース / 品質強制の6つの仕組み</td></tr>
+<tr><td>コアワークフロー</td><td>init → plan → apply / 宣言的・冪等</td></tr>
+<tr><td>Provider</td><td>バージョン制約 (~>) / alias でマルチリージョン</td></tr>
+<tr><td>lifecycle</td><td>prevent_destroy / ignore_changes / create_before_destroy</td></tr>
+<tr><td>状態ファイル</td><td>JSON / sensitive 平文保存 → リモート状態必須</td></tr>
+<tr><td>変数</td><td>6段階優先順位 / sensitive / validation / object / tuple</td></tr></table>
+<h3>Day 2 予告</h3>
+<ul>
+<li>モジュール設計と依存関係</li>
+<li>リモート状態管理（Azure Blob + ロック + 暗号化）</li>
+<li>CI/CD パイプライン（OIDC / GitHub Actions / Azure DevOps / 静的解析 / ドリフト検知）</li>
+<li>AVM Deep Dive（マルチティア構成 / VNet + NSG + Key Vault）</li>
+</ul></section>
+
+<!-- ============================== 10. 参照リンク集 ============================== -->
+<section id="links"><h2>10. 参照リンク集</h2>
+<table><tr><th>リソース</th><th>URL</th></tr>
+<tr><td>AVM Databricks (Registry)</td><td><a href="https://registry.terraform.io/modules/Azure/avm-res-databricks-workspace/azurerm/latest">Registry ↗</a></td></tr>
+<tr><td>AVM Databricks (GitHub)</td><td><a href="https://github.com/Azure/terraform-azurerm-avm-res-databricks-workspace">GitHub ↗</a></td></tr>
+<tr><td>AVM 公式サイト</td><td><a href="https://aka.ms/AVM">aka.ms/AVM</a></td></tr>
+<tr><td>モジュール索引</td><td><a href="https://aka.ms/avm/index">aka.ms/avm/index</a></td></tr>
+<tr><td>AVM Labs</td><td><a href="https://aka.ms/avm/tf/labs">aka.ms/avm/tf/labs</a></td></tr>
+<tr><td>Terraform on Azure</td><td><a href="https://aka.ms/tf/fundamentals">aka.ms/tf/fundamentals</a></td></tr>
+<tr><td>Terraform Registry (AVM)</td><td><a href="https://registry.terraform.io/search/modules?q=avm">Registry Search ↗</a></td></tr>
+<tr><td>HashiCorp Docs</td><td><a href="https://developer.hashicorp.com/terraform/docs">developer.hashicorp.com ↗</a></td></tr>
+<tr><td>AVM 入門動画 (YouTube)</td><td><a href="https://youtu.be/JbIMrJKW5N0">An Introduction to Azure Verified Modules ↗</a></td></tr>
+<tr><td>AVM モジュール分類</td><td><a href="https://azure.github.io/Azure-Verified-Modules/specs/shared/module-classifications/">Module Classifications ↗</a></td></tr>
+<tr><td>AI アシスト IaC 開発</td><td><a href="https://azure.github.io/Azure-Verified-Modules/experimental/ai-assisted-sol-dev/">AI-Assisted Solution Dev ↗</a></td></tr></table>
+</section>
+
+<!-- ============================== 付録 ============================== -->
+<section id="appendix-demo02" style="border-top:4px solid var(--azure);margin-top:60px">
+<h2>付録: Demo — 変数 Deep Dive</h2>
+<p><em>セッション内では時間の都合上省略しましたが、自習用として完全な手順を記載しています。</em></p>
+<p><strong>ディレクトリ:</strong> <code>day1/02-variables-locals-outputs/</code></p>
+
+<h4>Step 1: 初期化</h4>
+<pre>cd c:\Projects\AVM_Terraform_Workshop\day1\02-variables-locals-outputs
+terraform init</pre>
+
+<h4>Step 2: Plan（デフォルト値）</h4>
+<pre>terraform plan</pre>
+<p>→ リソースグループ名 <code>rg-tfworkshop-dev</code>。<code>terraform.tfvars</code> の値が自動読み込み。</p>
+
+<h4>Step 3: 優先順位デモ</h4>
+<pre>terraform plan -var="environment=prod"</pre>
+<p>→ <code>rg-tfworkshop-prod</code> に変わる。<code>-var</code> が tfvars より優先。</p>
+
+<h4>Step 4: validation デモ</h4>
+<pre>terraform plan -var="environment=uat"</pre>
+<p>→ <code>Error: Invalid value for variable</code> — plan 時点でブロック。</p>
+
+<h4>Step 5: sensitive output</h4>
+<pre>terraform apply -auto-approve
+terraform output                       <span class="cmt"># → "(sensitive value)"</span>
+terraform output -raw db_password_demo <span class="cmt"># → 平文表示 ⚠️</span></pre>
+
+<h4>Step 6: 複合型 output</h4>
+<pre>terraform output network_config_summary</pre>
+
+<h4>Step 7: クリーンアップ</h4>
+<pre>terraform destroy -auto-approve</pre>
+</section>
+
+</div>
+</body>
+</html>

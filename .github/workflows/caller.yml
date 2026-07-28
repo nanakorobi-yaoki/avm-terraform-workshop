@@ -1,0 +1,84 @@
+# ===========================================================================
+# 再利用可能ワークフローの「呼び出し側」サンプル
+#
+# ★ このリポジトリ内の reusable-terraform.yml をローカル参照しています。
+#   実運用では自社の共通リポジトリ（例: contoso-org/iac-workflows）に
+#   reusable-terraform.yml を置き、タグ付きで参照します:
+#
+#     uses: contoso-org/iac-workflows/.github/workflows/reusable-terraform.yml@v1.4.0
+#
+#   → 全案件のパイプラインを 1 箇所で更新できる。
+#     AVM の「ラッパーモジュール」と発想は完全に同じです。
+#
+# ★ 手動実行のみ（workflow_dispatch）にしてあります。
+#   Azure Storage バックエンドの実体が必要なため、push では起動しません。
+# ===========================================================================
+name: "Reusable Workflow 呼び出しデモ"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "デプロイ先環境"
+        type: choice
+        options: [dev, prod]
+        default: dev
+      apply:
+        description: "apply まで実行する（false なら plan のみ）"
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # パターン A: 単一環境の呼び出し
+  # ─────────────────────────────────────────────────────────────
+  terraform:
+    name: "Terraform (${{ inputs.environment }})"
+    uses: ./.github/workflows/reusable-terraform.yml
+    with:
+      working-directory: "day2/07-parameters"
+      environment: ${{ inputs.environment }}
+      apply: ${{ inputs.apply }}
+      backend-key: "workshop-${{ inputs.environment }}.tfstate"
+      backend-storage-account: "sttfstateworkshop001"
+      backend-resource-group: "rg-terraform-state"
+      policy-enforcement: true
+    secrets: inherit
+  # ─────────────────────────────────────────────────────────────
+  # パターン B: 顧客 × 環境のマトリクス展開（SI 事業向けの本命）
+  #
+  # 顧客が増えても matrix に 1 行足すだけ。
+  # fail-fast: false で「1 顧客の失敗が他顧客を巻き込まない」ようにします。
+  # max-parallel で state バックエンドへの同時アクセスを制御します。
+  #
+  # ※ 実際に動かすには各顧客のサブスクリプション / バックエンドが必要なため
+  #   コメントアウトしています。座学で構造だけ見せてください。
+  # ─────────────────────────────────────────────────────────────
+  #
+  # terraform-matrix:
+  #   strategy:
+  #     fail-fast: false
+  #     max-parallel: 3
+  #     matrix:
+  #       include:
+  #         - customer: contoso
+  #           environment: dev
+  #         - customer: contoso
+  #           environment: production
+  #         - customer: fabrikam
+  #           environment: production
+  #   name: "TF (${{ matrix.customer }}/${{ matrix.environment }})"
+  #   uses: ./.github/workflows/reusable-terraform.yml
+  #   with:
+  #     working-directory: "customers/${{ matrix.customer }}"
+  #     environment: ${{ matrix.environment }}
+  #     apply: true
+  #     backend-key: "${{ matrix.customer }}-${{ matrix.environment }}.tfstate"
+  #     backend-storage-account: "sttfstateworkshop001"
+  #     backend-resource-group: "rg-terraform-state"
+  #   secrets: inherit

@@ -39,6 +39,7 @@ resources_under_change contains r if {
     some action in r.change.actions
     action in {"create", "update"}
     not r.type in tag_exempt_types
+    object.get(r.change.after, "tags", null) != null
 }
 
 deny contains msg if {

@@ -7,14 +7,15 @@
       1. Entra ID アプリ登録 + サービスプリンシパル作成
       2. リソースグループ作成（最小権限スコープ用）
       3. RBAC 割り当て（RG スコープ / サブスクリプション全体ではない）
-      4. Federated Credential を 4 種類登録
+    4. Azure Blob state backend を作成
+    5. Federated Credential を 4 種類登録
            - main ブランチ push 用
            - pull_request 用
            - environment:production 用   ← 承認ゲート付きジョブに必須
            - environment:plan 用
          ※ subject の接頭辞は GitHub API から実値を取得し、古典形式と
            ID 形式の両方を登録します（合計最大 8 件）
-      5. gh CLI があれば GitHub Secrets を自動登録
+    6. gh CLI があれば GitHub Secrets / Variables を自動登録
 
     前提: az CLI ログイン済み (az login)、アプリ登録権限があること
 
@@ -30,11 +31,16 @@ param(
     [Parameter(Mandatory)][string] $SubscriptionId,
     [Parameter(Mandatory)][string] $ResourceGroupName,
     [string] $AppName,
+    [string] $BackendResourceGroupName = "rg-terraform-state",
+    [string] $BackendStorageAccountName,
     [string] $Location = "japaneast",
     [string] $Role     = "Contributor"
 )
 
 $ErrorActionPreference = "Stop"
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $PSNativeCommandUseErrorActionPreference = $true
+}
 
 if (-not $AppName) { $AppName = "gh-oidc-$GitHubOrg-$GitHubRepo" }
 $RepoFull = "$GitHubOrg/$GitHubRepo"
@@ -54,7 +60,7 @@ az account set --subscription $SubscriptionId | Out-Null
 # -----------------------------------------------------------------------------
 # 1. アプリ登録（冪等）
 # -----------------------------------------------------------------------------
-Write-Host "▶ [1/5] Entra ID アプリ登録..." -ForegroundColor Yellow
+Write-Host "▶ [1/6] Entra ID アプリ登録..." -ForegroundColor Yellow
 $appId = az ad app list --display-name $AppName --query "[0].appId" -o tsv
 
 if ([string]::IsNullOrWhiteSpace($appId)) {
@@ -64,10 +70,15 @@ if ([string]::IsNullOrWhiteSpace($appId)) {
     Write-Host "   既存を再利用: $appId"
 }
 
+if (-not $BackendStorageAccountName) {
+    $compactAppId = $appId.Replace("-", "")
+    $BackendStorageAccountName = "sttf$($compactAppId.Substring(0, 20))"
+}
+
 # -----------------------------------------------------------------------------
 # 2. サービスプリンシパル
 # -----------------------------------------------------------------------------
-Write-Host "▶ [2/5] サービスプリンシパル..." -ForegroundColor Yellow
+Write-Host "▶ [2/6] サービスプリンシパル..." -ForegroundColor Yellow
 $spId = az ad sp list --filter "appId eq '$appId'" --query "[0].id" -o tsv
 
 if ([string]::IsNullOrWhiteSpace($spId)) {
@@ -82,7 +93,7 @@ if ([string]::IsNullOrWhiteSpace($spId)) {
 # -----------------------------------------------------------------------------
 # 3. リソースグループ + RBAC（最小権限: RG スコープ）
 # -----------------------------------------------------------------------------
-Write-Host "▶ [3/5] リソースグループと RBAC..." -ForegroundColor Yellow
+Write-Host "▶ [3/6] リソースグループと RBAC..." -ForegroundColor Yellow
 az group create --name $ResourceGroupName --location $Location --output none
 $scope = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName"
 
@@ -102,10 +113,44 @@ if ([string]::IsNullOrWhiteSpace($existing)) {
 }
 
 # -----------------------------------------------------------------------------
+# 4. Azure Blob Backend（state はデプロイ先と分離）
+# -----------------------------------------------------------------------------
+Write-Host "▶ [4/6] Terraform state backend..." -ForegroundColor Yellow
+az group create --name $BackendResourceGroupName --location $Location --output none
+az storage account create `
+    --name $BackendStorageAccountName `
+    --resource-group $BackendResourceGroupName `
+    --location $Location `
+    --sku Standard_LRS `
+    --allow-blob-public-access false `
+    --min-tls-version TLS1_2 `
+    --output none
+az storage container create `
+    --name tfstate `
+    --account-name $BackendStorageAccountName `
+    --auth-mode key `
+    --output none
+
+$storageId = az storage account show `
+    --name $BackendStorageAccountName `
+    --resource-group $BackendResourceGroupName `
+    --query id -o tsv
+$backendRole = az role assignment list --assignee $spId --scope $storageId `
+    --query "[?roleDefinitionName=='Storage Blob Data Contributor']" -o tsv
+if ([string]::IsNullOrWhiteSpace($backendRole)) {
+    az role assignment create `
+        --assignee-object-id $spId `
+        --assignee-principal-type ServicePrincipal `
+        --role "Storage Blob Data Contributor" `
+        --scope $storageId `
+        --output none
+}
+
+# -----------------------------------------------------------------------------
 # 4. Federated Credentials
 #    ★ subject が JWT の sub クレームと完全一致する必要がある
 # -----------------------------------------------------------------------------
-Write-Host "▶ [4/5] Federated Credential..." -ForegroundColor Yellow
+Write-Host "▶ [5/6] Federated Credential..." -ForegroundColor Yellow
 
 function Add-FederatedCredential {
     param([string]$Name, [string]$Subject, [string]$Description)
@@ -139,7 +184,7 @@ function Add-FederatedCredential {
         Write-Host "   登録: $Name"
         Write-Host "         subject = $Subject"
     } else {
-        Write-Host "   ✗ 登録失敗: $Name (subject = $Subject)" -ForegroundColor Red
+        throw "Federated Credential 登録失敗: $Name (subject = $Subject)"
     }
 }
 
@@ -197,12 +242,16 @@ foreach ($prefix in $prefixes) {
 # -----------------------------------------------------------------------------
 $tenantId = az account show --query tenantId -o tsv
 
-Write-Host "▶ [5/5] GitHub Secrets..." -ForegroundColor Yellow
+Write-Host "▶ [6/6] GitHub Secrets / Variables..." -ForegroundColor Yellow
 
 if ($ghAvailable) {
     gh secret set AZURE_CLIENT_ID       --repo $RepoFull --body $appId
     gh secret set AZURE_TENANT_ID       --repo $RepoFull --body $tenantId
     gh secret set AZURE_SUBSCRIPTION_ID --repo $RepoFull --body $SubscriptionId
+    gh variable set DEPLOYMENT_RESOURCE_GROUP --repo $RepoFull --body $ResourceGroupName
+    gh variable set TFSTATE_RESOURCE_GROUP     --repo $RepoFull --body $BackendResourceGroupName
+    gh variable set TFSTATE_STORAGE_ACCOUNT    --repo $RepoFull --body $BackendStorageAccountName
+    gh variable set TFSTATE_CONTAINER          --repo $RepoFull --body "tfstate"
     Write-Host "   gh CLI で自動登録しました"
 } else {
     Write-Host "   gh CLI が無いため手動で登録してください"
@@ -219,6 +268,12 @@ GitHub Secrets に以下を設定してください
   AZURE_CLIENT_ID       = $appId
   AZURE_TENANT_ID       = $tenantId
   AZURE_SUBSCRIPTION_ID = $SubscriptionId
+
+GitHub Variables:
+    DEPLOYMENT_RESOURCE_GROUP = $ResourceGroupName
+    TFSTATE_RESOURCE_GROUP     = $BackendResourceGroupName
+    TFSTATE_STORAGE_ACCOUNT    = $BackendStorageAccountName
+    TFSTATE_CONTAINER          = tfstate
 
 次の手順:
   1. GitHub リポジトリで Environment "production" と "plan" を作成

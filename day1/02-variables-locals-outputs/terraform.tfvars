@@ -20,3 +20,7 @@ location     = "japaneast"
 extra_tags = {
   owner = "your-name"
 }
+
+# パスワードはファイルに保存せず、実行前に環境変数で渡します。
+# PowerShell: $env:TF_VAR_db_admin_password = Read-Host -MaskInput
+# Bash:       read -rsp "Database password: " TF_VAR_db_admin_password && export TF_VAR_db_admin_password

@@ -50,7 +50,7 @@ stages:
 
           # 静的解析: tflint
           - script: |
-              curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+              curl -s https://raw.githubusercontent.com/terraform-linters/tflint/b0bc063ddda5d7c11c9766461379a486afe5f6cd/install_linux.sh | bash -s -- v0.64.0
               tflint --init
               tflint --recursive
             displayName: "TFLint"
@@ -58,14 +58,14 @@ stages:
 
           # セキュリティスキャン: Checkov
           - script: |
-              pip install checkov
-              checkov -d $(WORKING_DIR) --framework terraform --soft-fail
+              pip install checkov==3.3.9
+              checkov -d $(WORKING_DIR) --framework terraform
             displayName: "Checkov Security Scan"
 
           # 脆弱性スキャン: Trivy
           - script: |
-              curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-              trivy config $(WORKING_DIR) --exit-code 0
+              curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/a525f55d359f4c929bb511b2ca7773468e7659ea/contrib/install.sh | sh -s -- -b /usr/local/bin v0.72.0
+              trivy config $(WORKING_DIR) --exit-code 1
             displayName: "Trivy Config Scan"
 
           - task: TerraformTaskV4@4

@@ -43,9 +43,12 @@
 このスクリプトは以下を**冪等に**実行します。
 
 1. Entra ID アプリ登録 + Service Principal 作成
-2. リソースグループ作成 + **RG スコープ**の RBAC 割り当て（サブスクリプション全体の Contributor は付与しません）
-3. **Federated Credential を 4 つ**登録
-4. `gh` CLI があれば GitHub Secrets を自動設定
+2. デプロイ先リソースグループ作成 + **RG スコープ**の RBAC 割り当て（サブスクリプション全体の Contributor は付与しません）
+3. Azure Blob state backend 作成 + Storage Blob Data Contributor の割り当て
+4. **Federated Credential を 4 種類**登録（GitHub の subject 形式により最大 8 件）
+5. `gh` CLI があれば GitHub Secrets と Repository Variables を自動設定
+
+Active workflow は `DEPLOYMENT_RESOURCE_GROUP`、`TFSTATE_RESOURCE_GROUP`、`TFSTATE_STORAGE_ACCOUNT`、`TFSTATE_CONTAINER` の Repository Variables を使用します。セットアップスクリプト経由なら手動登録は不要です。
 
 ### ⚠️ 最頻出の落とし穴
 

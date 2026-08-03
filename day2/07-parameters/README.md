@@ -22,6 +22,7 @@
 ```
 07-parameters/
 ├── main.tf                          # yamldecode でパラメータを読み込む
+├── requirements.txt                # 生成・検証ツールの固定依存関係
 ├── params/
 │   ├── contoso-prod.yaml            # ★ お客様が編集するのはここだけ
 │   └── contoso-dev.yaml
@@ -66,10 +67,10 @@ params/contoso-prod.yaml::$.costCenter: 'abc' does not match '^[0-9]{4}-[0-9]{4}
 
 ### ③ Terraform 側の整合性チェック
 
-`main.tf` の `check` ブロックは、Schema では表現しきれない**業務ルール**を検証します。
+`main.tf` の `terraform_data.parameter_guardrails` は、Schema では表現しきれない**業務ルール**を precondition で検証します。
 
 ```hcl
-assert {
+precondition {
   condition     = var.env != "prod" || local.p.enablePrivateEndpoint
   error_message = "本番環境では enablePrivateEndpoint を true にしてください。"
 }
@@ -88,7 +89,12 @@ dev と prod の違いが**行単位で明確**に出ます。これを PR に�
 ### ⑤ 納品用 Excel の自動生成
 
 ```bash
-pip install openpyxl pyyaml
+pip install -r requirements.txt
+
+python tools/gen_param_sheet.py \
+  --params params/contoso-prod.yaml \
+  --schema schema/params.schema.json \
+  --validate-only
 
 terraform plan -out=tfplan
 terraform show -json tfplan > tfplan.json
@@ -122,7 +128,7 @@ python tools/gen_param_sheet.py \
 - name: 納品パラメータシート生成
   if: github.ref == 'refs/heads/main'
   run: |
-    pip install openpyxl pyyaml
+    pip install -r requirements.txt
     python tools/gen_param_sheet.py \
       --params params/${{ matrix.customer }}-${{ matrix.env }}.yaml \
       --schema schema/params.schema.json \

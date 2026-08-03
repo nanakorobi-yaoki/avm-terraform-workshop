@@ -43,11 +43,13 @@ from typing import Any
 
 try:
     import yaml
+    from jsonschema import Draft202012Validator, FormatChecker
+    from jsonschema.exceptions import SchemaError
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 except ImportError:
-    sys.exit("依存パッケージが不足しています: pip install openpyxl pyyaml")
+    sys.exit("依存パッケージが不足しています: pip install -r requirements.txt")
 
 
 HEADER_FILL = PatternFill("solid", fgColor="0078D4")
@@ -308,12 +310,36 @@ def normalized_payload(params: dict, schema: dict, plan_path: Path | None) -> di
     return payload
 
 
+def validate_parameters(params: Any, schema: dict) -> None:
+    """YAML パラメータを Draft 2020-12 JSON Schema で検証する。"""
+    try:
+        Draft202012Validator.check_schema(schema)
+    except SchemaError as error:
+        raise ValueError(f"JSON Schema が不正です: {error.message}") from error
+
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    errors = sorted(validator.iter_errors(params), key=lambda error: list(error.path))
+    if not errors:
+        return
+
+    details = []
+    for error in errors:
+        path = ".".join(str(part) for part in error.absolute_path) or "<root>"
+        details.append(f"  - {path}: {error.message}")
+    raise ValueError("パラメータが JSON Schema に違反しています:\n" + "\n".join(details))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="納品用パラメータシートを生成します")
     ap.add_argument("--params", required=True, type=Path, help="パラメータ YAML")
     ap.add_argument("--schema", required=True, type=Path, help="JSON Schema")
     ap.add_argument("--plan", type=Path, help="terraform show -json の出力")
-    ap.add_argument("--output", required=True, type=Path, help="出力パス")
+    ap.add_argument("--output", type=Path, help="出力パス")
+    ap.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="JSON Schema 検証のみ実行し、成果物を生成しない",
+    )
     ap.add_argument(
         "--format",
         choices=["xlsx", "json"],
@@ -324,6 +350,18 @@ def main() -> int:
 
     params = yaml.safe_load(args.params.read_text(encoding="utf-8"))
     schema = json.loads(args.schema.read_text(encoding="utf-8"))
+    try:
+        validate_parameters(params, schema)
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 2
+
+    if args.validate_only:
+        print(f"Schema 検証に成功しました: {args.params}")
+        return 0
+
+    if args.output is None:
+        ap.error("--validate-only を指定しない場合は --output が必要です")
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     if args.format == "json":

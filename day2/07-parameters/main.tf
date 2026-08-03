@@ -17,6 +17,8 @@
 terraform {
   required_version = ">= 1.9"
 
+  backend "azurerm" {}
+
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
@@ -32,6 +34,11 @@ provider "azurerm" {
 
 variable "subscription_id" {
   description = "Azure サブスクリプション ID"
+  type        = string
+}
+
+variable "deployment_resource_group_name" {
+  description = "事前作成済みのデプロイ先リソースグループ名（OIDC の RBAC スコープと一致させる）"
   type        = string
 }
 
@@ -92,16 +99,21 @@ check "parameter_advisory" {
   }
 }
 
-resource "azurerm_resource_group" "this" {
-  name     = "rg-${var.customer}-${var.env}"
-  location = local.p.location
-  tags     = local.common_tags
+data "azurerm_resource_group" "this" {
+  name = var.deployment_resource_group_name
+}
 
+resource "terraform_data" "parameter_guardrails" {
   # ★ ここは警告ではなく plan を「停止」させる ★
   lifecycle {
     precondition {
       condition     = can(cidrhost(local.p.network.addressSpace[0], 0))
       error_message = "network.addressSpace[0] が有効な CIDR ではありません: ${local.p.network.addressSpace[0]}"
+    }
+
+    precondition {
+      condition     = lower(data.azurerm_resource_group.this.location) == lower(local.p.location)
+      error_message = "YAML の location (${local.p.location}) とデプロイ先リソースグループの location (${data.azurerm_resource_group.this.location}) が一致しません。"
     }
 
     precondition {
@@ -115,6 +127,7 @@ resource "azurerm_resource_group" "this" {
 # AVM モジュールに YAML の値を渡す
 # =============================================================================
 module "vnet" {
+  #checkov:skip=CKV_TF_1: Registry module is patch-bounded and verified by the committed dependency lock file.
   source = "Azure/avm-res-network-virtualnetwork/azurerm"
   # 注意: AVM は 1.0 未満のモジュールが多く、`~> 0.19` と書くと 0.99 まで許容され
   #       破壊的変更を拾ってしまいます。パッチのみ許容する `~> 0.19.0` で固定します。
@@ -122,8 +135,10 @@ module "vnet" {
 
   name = "vnet-${var.customer}-${var.env}"
   # v0.8 以降、resource_group_name ではなく親リソースの ID を渡します
-  parent_id = azurerm_resource_group.this.id
-  location  = azurerm_resource_group.this.location
+  parent_id = data.azurerm_resource_group.this.id
+  location  = data.azurerm_resource_group.this.location
+
+  depends_on = [terraform_data.parameter_guardrails]
 
   address_space = local.p.network.addressSpace
 
@@ -148,7 +163,7 @@ output "parameter_summary" {
     environment    = var.env
     location       = local.p.location
     parameter_file = local.param_file
-    resource_group = azurerm_resource_group.this.name
+    resource_group = data.azurerm_resource_group.this.name
     vnet_name      = module.vnet.name
     address_space  = local.p.network.addressSpace
     subnet_count   = length(local.p.network.subnets)

@@ -6,14 +6,15 @@
 #   1. Entra ID アプリ登録 + サービスプリンシパル作成
 #   2. リソースグループ作成（最小権限スコープ用）
 #   3. RBAC 割り当て（RG スコープ / サブスクリプション全体ではない）
-#   4. Federated Credential を 4 種類登録
+#   4. Azure Blob state backend を作成
+#   5. Federated Credential を 4 種類登録
 #        - main ブランチ push 用
 #        - pull_request 用
 #        - environment:production 用   ← 承認ゲート付きジョブに必須
 #        - environment:plan 用
 #      ※ subject の接頭辞は GitHub API から実値を取得し、古典形式と
 #        ID 形式の両方を登録します（合計最大 8 件）
-#   5. gh CLI があれば GitHub Secrets を自動登録
+#   6. gh CLI があれば GitHub Secrets / Variables を自動登録
 #
 # 前提: az CLI ログイン済み (`az login`)、アプリ登録権限があること
 # 使い方:
@@ -28,6 +29,8 @@ GITHUB_ORG=""
 GITHUB_REPO=""
 SUBSCRIPTION_ID=""
 RESOURCE_GROUP=""
+BACKEND_RESOURCE_GROUP="rg-terraform-state"
+BACKEND_STORAGE_ACCOUNT=""
 LOCATION="japaneast"
 ROLE="Contributor"
 
@@ -43,6 +46,8 @@ usage() {
 
 オプション:
   --app-name          Entra ID アプリ名 (既定: gh-oidc-<org>-<repo>)
+  --backend-resource-group State 用リソースグループ名 (既定: rg-terraform-state)
+  --backend-storage-account State 用 Storage Account 名 (既定: App ID から生成)
   --location          リージョン (既定: japaneast)
   --role              割り当てるロール (既定: Contributor)
   -h, --help          このヘルプ
@@ -57,6 +62,8 @@ while [[ $# -gt 0 ]]; do
     --subscription)   SUBSCRIPTION_ID="$2"; shift 2 ;;
     --resource-group) RESOURCE_GROUP="$2"; shift 2 ;;
     --app-name)       APP_NAME="$2"; shift 2 ;;
+    --backend-resource-group) BACKEND_RESOURCE_GROUP="$2"; shift 2 ;;
+    --backend-storage-account) BACKEND_STORAGE_ACCOUNT="$2"; shift 2 ;;
     --location)       LOCATION="$2"; shift 2 ;;
     --role)           ROLE="$2"; shift 2 ;;
     -h|--help)        usage ;;
@@ -85,7 +92,7 @@ az account set --subscription "$SUBSCRIPTION_ID"
 # -----------------------------------------------------------------------------
 # 1. アプリ登録（冪等: 既存があれば再利用）
 # -----------------------------------------------------------------------------
-echo "▶ [1/5] Entra ID アプリ登録..."
+echo "▶ [1/6] Entra ID アプリ登録..."
 APP_ID=$(az ad app list --display-name "$APP_NAME" --query "[0].appId" -o tsv 2>/dev/null || true)
 
 if [[ -z "$APP_ID" || "$APP_ID" == "null" ]]; then
@@ -95,10 +102,15 @@ else
   echo "   既存を再利用: ${APP_ID}"
 fi
 
+if [[ -z "$BACKEND_STORAGE_ACCOUNT" ]]; then
+  BACKEND_STORAGE_ACCOUNT="sttf${APP_ID//-/}"
+  BACKEND_STORAGE_ACCOUNT="${BACKEND_STORAGE_ACCOUNT:0:24}"
+fi
+
 # -----------------------------------------------------------------------------
 # 2. サービスプリンシパル
 # -----------------------------------------------------------------------------
-echo "▶ [2/5] サービスプリンシパル..."
+echo "▶ [2/6] サービスプリンシパル..."
 SP_ID=$(az ad sp list --filter "appId eq '${APP_ID}'" --query "[0].id" -o tsv 2>/dev/null || true)
 
 if [[ -z "$SP_ID" || "$SP_ID" == "null" ]]; then
@@ -113,7 +125,7 @@ fi
 # -----------------------------------------------------------------------------
 # 3. リソースグループ + RBAC（最小権限: RG スコープ）
 # -----------------------------------------------------------------------------
-echo "▶ [3/5] リソースグループと RBAC..."
+echo "▶ [3/6] リソースグループと RBAC..."
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
 SCOPE="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}"
 
@@ -130,10 +142,39 @@ else
 fi
 
 # -----------------------------------------------------------------------------
+# 4. Azure Blob Backend（state はデプロイ先と分離）
+# -----------------------------------------------------------------------------
+echo "▶ [4/6] Terraform state backend..."
+az group create --name "$BACKEND_RESOURCE_GROUP" --location "$LOCATION" --output none
+az storage account create \
+  --name "$BACKEND_STORAGE_ACCOUNT" \
+  --resource-group "$BACKEND_RESOURCE_GROUP" \
+  --location "$LOCATION" \
+  --sku Standard_LRS \
+  --allow-blob-public-access false \
+  --min-tls-version TLS1_2 \
+  --output none
+az storage container create \
+  --name tfstate \
+  --account-name "$BACKEND_STORAGE_ACCOUNT" \
+  --auth-mode key \
+  --output none
+
+STORAGE_ID=$(az storage account show --name "$BACKEND_STORAGE_ACCOUNT" --resource-group "$BACKEND_RESOURCE_GROUP" --query id -o tsv)
+if ! az role assignment list --assignee "$SP_ID" --scope "$STORAGE_ID" --query "[?roleDefinitionName=='Storage Blob Data Contributor']" -o tsv | grep -q .; then
+  az role assignment create \
+    --assignee-object-id "$SP_ID" \
+    --assignee-principal-type ServicePrincipal \
+    --role "Storage Blob Data Contributor" \
+    --scope "$STORAGE_ID" \
+    --output none
+fi
+
+# -----------------------------------------------------------------------------
 # 4. Federated Credentials
 #    ★ subject が JWT の sub クレームと完全一致する必要がある
 # -----------------------------------------------------------------------------
-echo "▶ [4/5] Federated Credential..."
+echo "▶ [5/6] Federated Credential..."
 
 add_federated_credential() {
   local name="$1" subject="$2" desc="$3"
@@ -159,6 +200,7 @@ add_federated_credential() {
     echo "         subject = ${subject}"
   else
     echo "   ✗ 登録失敗: ${name} (subject = ${subject})" >&2
+    return 1
   fi
 }
 
@@ -209,11 +251,15 @@ done
 # -----------------------------------------------------------------------------
 TENANT_ID=$(az account show --query tenantId -o tsv)
 
-echo "▶ [5/5] GitHub Secrets..."
+echo "▶ [6/6] GitHub Secrets / Variables..."
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   gh secret set AZURE_CLIENT_ID       --repo "$REPO_FULL" --body "$APP_ID"
   gh secret set AZURE_TENANT_ID       --repo "$REPO_FULL" --body "$TENANT_ID"
   gh secret set AZURE_SUBSCRIPTION_ID --repo "$REPO_FULL" --body "$SUBSCRIPTION_ID"
+  gh variable set DEPLOYMENT_RESOURCE_GROUP --repo "$REPO_FULL" --body "$RESOURCE_GROUP"
+  gh variable set TFSTATE_RESOURCE_GROUP     --repo "$REPO_FULL" --body "$BACKEND_RESOURCE_GROUP"
+  gh variable set TFSTATE_STORAGE_ACCOUNT    --repo "$REPO_FULL" --body "$BACKEND_STORAGE_ACCOUNT"
+  gh variable set TFSTATE_CONTAINER          --repo "$REPO_FULL" --body "tfstate"
   echo "   gh CLI で自動登録しました"
 else
   echo "   gh CLI が無い / 未認証のため手動で登録してください"
@@ -230,6 +276,12 @@ GitHub Secrets に以下を設定してください
   AZURE_CLIENT_ID       = ${APP_ID}
   AZURE_TENANT_ID       = ${TENANT_ID}
   AZURE_SUBSCRIPTION_ID = ${SUBSCRIPTION_ID}
+
+GitHub Variables:
+  DEPLOYMENT_RESOURCE_GROUP = ${RESOURCE_GROUP}
+  TFSTATE_RESOURCE_GROUP     = ${BACKEND_RESOURCE_GROUP}
+  TFSTATE_STORAGE_ACCOUNT    = ${BACKEND_STORAGE_ACCOUNT}
+  TFSTATE_CONTAINER          = tfstate
 
 次の手順:
   1. GitHub リポジトリで Environment "production" と "plan" を作成

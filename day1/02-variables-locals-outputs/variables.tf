@@ -71,9 +71,8 @@ variable "extra_tags" {
 # sensitive 変数 — plan / apply 出力でマスクされる
 # ===========================================
 variable "db_admin_password" {
-  description = "データベース管理者パスワード（デモ用）"
+  description = "データベース管理者パスワード（TF_VAR_db_admin_password など実行時に渡す）"
   type        = string
-  default     = "P@ssw0rd-Demo-Only!"
   sensitive   = true
   # sensitive = true の効果:
   #   - terraform plan/apply の出力で "(sensitive value)" と表示

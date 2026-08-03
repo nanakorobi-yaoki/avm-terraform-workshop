@@ -23,10 +23,7 @@ on:
       - ".github/workflows/terraform.yml"
   workflow_dispatch: # ← セッション中に手動実行したいとき用
 
-permissions:
-  id-token: write # OIDC トークン取得に必要
-  contents: read
-  pull-requests: write
+permissions: {}
 
 # ---------------------------------------------------------------------------
 # ★ state ロック競合を防ぐ直列化
@@ -49,6 +46,7 @@ env:
   TF_VAR_customer: "contoso"
   TF_VAR_env: "dev"
   TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_deployment_resource_group_name: ${{ vars.DEPLOYMENT_RESOURCE_GROUP }}
   # ── OIDC 認証（クライアントシークレット不要） ──
   ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
   ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
@@ -62,10 +60,29 @@ jobs:
   validate:
     name: "Validate & Lint"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ${{ env.WORKING_DIR }}/requirements.txt
+
+      - name: Parameter Schema Validation
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          pip install -r requirements.txt
+          for params in params/*.yaml; do
+            python tools/gen_param_sheet.py \
+              --params "$params" \
+              --schema schema/params.schema.json \
+              --validate-only
+          done
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
@@ -83,7 +100,9 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
 
       - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@90f302c255ef959cbfb4bd10581afecdb7ece3e6 # v4
+        with:
+          tflint_version: v0.64.0
 
       # 設定はリポジトリルートの .tflint.hcl を明示的に参照
       # （tflint は既定でカレントディレクトリしか見ないため）
@@ -96,11 +115,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Checkov (Security Scan)
-        uses: bridgecrewio/checkov-action@v12
+        uses: bridgecrewio/checkov-action@9b70310bcd306d11740313070b940167d6b23085 # v12
         with:
           directory: ${{ env.WORKING_DIR }}
           framework: terraform
-          soft_fail: true # デモ中に赤くしないため。実運用では false 推奨
+          soft_fail: false
 
   # ─────────────────────────────────────
   # Job 2: Plan（Azure OIDC 認証あり）
@@ -110,23 +129,33 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     environment: plan # ← environment を付けると sub クレームが変わる点に注意
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
       - name: Azure Login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Terraform Init
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" \
+            -backend-config="use_azuread_auth=true" \
+            -backend-config="key=workshop/dev.tfstate"
         working-directory: ${{ env.WORKING_DIR }}
 
       # pipefail が無いと tee 側の終了コードになり、plan 失敗を見逃します
@@ -139,13 +168,21 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
 
       - name: Upload Plan
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tfplan
           path: |
             ${{ env.WORKING_DIR }}/tfplan
             ${{ env.WORKING_DIR }}/plan_output.txt
           retention-days: 5
+
+      - name: Policy as Code (Conftest)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          curl -sSL https://github.com/open-policy-agent/conftest/releases/download/v0.62.0/conftest_0.62.0_Linux_x86_64.tar.gz \
+            | tar xz -C /tmp conftest
+          terraform show -json tfplan > tfplan.json
+          /tmp/conftest test tfplan.json --policy "$GITHUB_WORKSPACE/day2/03-cicd/policy"
 
       # -----------------------------------------------------------------
       # PR に plan 結果をコメント（sticky: 既存コメントを更新）
@@ -157,7 +194,7 @@ jobs:
       # -----------------------------------------------------------------
       - name: Comment Plan on PR
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           WORKDIR: ${{ env.WORKING_DIR }}
         with:
@@ -226,28 +263,37 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: production # ← 環境保護ルール（手動承認）をここで効かせる
+    permissions:
+      id-token: write
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
       - name: Azure Login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Terraform Init
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}" \
+            -backend-config="use_azuread_auth=true" \
+            -backend-config="key=workshop/dev.tfstate"
         working-directory: ${{ env.WORKING_DIR }}
 
       # plan 時の tfplan をそのまま適用する（再 plan しない = 差分混入を防ぐ）
       - name: Download Plan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: tfplan
           path: ${{ env.WORKING_DIR }}

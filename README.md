@@ -41,7 +41,8 @@ AVM_Terraform_Workshop/
 │   ├── 03-cicd/                    # GitHub Actions & Azure DevOps パイプライン
 │   ├── 04-avm-reference/           # AVM モジュール参照（version 固定）
 │   ├── 05-avm-consistent-interface/ # 一貫インターフェース実演
-│   └── 06-multi-tier-avm/          # マルチティア構成 & AVM from scratch
+│   ├── 06-multi-tier-avm/          # マルチティア構成 & AVM from scratch
+│   └── 07-parameters/              # YAML + JSON Schema パラメータ管理
 └── README.md
 ```
 
@@ -52,3 +53,22 @@ AVM_Terraform_Workshop/
 - Azure CLI (`az login` 済み)
 - Git
 - VS Code + HashiCorp Terraform 拡張機能
+
+## GitHub Actions のセットアップ
+
+`day2/03-cicd/scripts/setup-oidc.ps1` または `setup-oidc.sh` を実行すると、次を冪等に構成します。
+
+- GitHub Actions 用の Entra ID アプリと Federated Credentials
+- デプロイ先リソースグループに限定した Contributor
+- Azure Blob state backend と Storage Blob Data Contributor
+- GitHub Secrets と、ワークフローが参照する Repository Variables
+
+GitHub の `production` Environment には Required reviewers を設定してください。ワークフローは remote state、blocking Checkov/Conftest、JSON Schema 検証を使用します。
+
+## 公開リポジトリとして配布する際の注意
+
+- 配布は GitHub リポジトリ、Release、または `git archive` を使用してください。作業フォルダーを直接 ZIP 化しないでください。
+- `*.tfstate*`、`.terraform/`、`.venv/` は機密情報やローカル実行情報を含む可能性があり、`.gitignore` で除外しています。
+- Terraform の `sensitive = true` は state 内の値を暗号化しません。パスワードなどは `TF_VAR_*` または CI の Secret から実行時に渡してください。
+- Public 化前に `git status --short` と `git ls-files` を確認し、意図したファイルだけが追跡されていることを確認してください。
+- Git のコミット作成者名とメールアドレスは公開履歴に残ります。
